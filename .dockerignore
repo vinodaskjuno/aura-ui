@@ -1,0 +1,19 @@
+# ── Secrets ─────────────────────────────────────────────────────────────────
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+
+# ── Node: reinstalled inside the builder. Rolldown ships native binaries, so a
+#    host arm64 node_modules would break a linux/amd64 image. ────────────────
+**/node_modules/
+frontend/dist/
+
+# ── Repo metadata & docs ────────────────────────────────────────────────────
+.git/
+.github/
+.gitignore
+**/*.md
+
+# NOT ignored: docker/ — ui.Dockerfile COPYs docker/nginx.conf.template and
+# docker/snippets/ at build time (ui.Dockerfile:65-66).

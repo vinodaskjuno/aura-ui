@@ -1,0 +1,338 @@
+/* ─── Transit Tracker — Neon Live Animations ─────────────────────────── */
+
+.transit-canvas {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 32px 24px 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle dot-grid background */
+.transit-canvas::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--color-border) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* ─── Track Lines ────────────────────────────────────────────────────── */
+
+.track-line {
+  stroke: #1e3a5f;
+  stroke-width: 3;
+  fill: none;
+  transition: stroke 0.4s ease;
+}
+
+.track-line.completed {
+  stroke: #00ff88;
+  filter: drop-shadow(0 0 4px #00ff88) drop-shadow(0 0 10px #00aa55);
+}
+
+.track-line.active {
+  stroke: #00aaff;
+  stroke-dasharray: 10 5;
+  animation: flow-dash 1.2s linear infinite;
+  filter: drop-shadow(0 0 6px #00aaff) drop-shadow(0 0 14px #0055cc);
+}
+
+.track-line.pending {
+  stroke: #1e3a5f;
+  opacity: 0.5;
+}
+
+@keyframes flow-dash {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -30; }
+}
+
+/* ─── Station Nodes ──────────────────────────────────────────────────── */
+
+.station-node {
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+.station-node:hover { transform: scale(1.12); }
+
+/* Completed station */
+.station-circle.completed {
+  fill: #00ff88;
+  stroke: #00ff88;
+  filter: drop-shadow(0 0 6px #00ff88) drop-shadow(0 0 14px #00aa55);
+}
+
+/* Live / in-progress station */
+.station-circle.live {
+  fill: #00aaff;
+  stroke: #00aaff;
+  filter: drop-shadow(0 0 8px #00aaff) drop-shadow(0 0 20px #0055cc);
+}
+
+/* Outer pulse ring for live station */
+.station-ring {
+  fill: none;
+  stroke: #00aaff;
+  stroke-width: 2;
+  opacity: 0;
+}
+.station-ring.animate {
+  animation: pulse-ring 1.4s ease-out infinite;
+}
+@keyframes pulse-ring {
+  0%   { r: 14; opacity: 0.9; }
+  100% { r: 30; opacity: 0; }
+}
+
+/* SVG circle pulse rings (applied via className on <circle> SVG elements) */
+.pulse-ring-svg {
+  animation: svg-pulse 1.4s ease-out infinite;
+}
+.pulse-ring-svg-delay {
+  animation: svg-pulse 1.4s ease-out 0.7s infinite;
+}
+@keyframes svg-pulse {
+  0%   { opacity: 0.8; transform: scale(1); }
+  100% { opacity: 0;   transform: scale(1.6); }
+}
+/* SVG animations need transform-origin at center of the circle */
+circle.pulse-ring-svg,
+circle.pulse-ring-svg-delay {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Second delayed ring */
+.station-ring.animate.delay {
+  animation-delay: 0.7s;
+}
+
+/* Failed station */
+.station-circle.failed {
+  fill: #ff3333;
+  stroke: #ff3333;
+  filter: drop-shadow(0 0 6px #ff3333) drop-shadow(0 0 14px #aa0000);
+}
+
+/* Blocked station */
+.station-circle.blocked {
+  fill: #ff9900;
+  stroke: #ff9900;
+  filter: drop-shadow(0 0 6px #ff9900);
+}
+
+/* Pending station */
+.station-circle.pending {
+  fill: #0a0f1e;
+  stroke: #1e3a5f;
+  opacity: 0.5;
+}
+
+/* ─── Station Label Card ─────────────────────────────────────────────── */
+
+.station-card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  backdrop-filter: blur(8px);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  cursor: pointer;
+  min-width: 110px;
+  text-align: center;
+}
+.station-card:hover {
+  box-shadow: 0 0 20px rgba(0, 170, 255, 0.45);
+  border-color: rgba(0, 170, 255, 0.6);
+}
+.station-card.live {
+  border-color: rgba(0, 170, 255, 0.7);
+  box-shadow: 0 0 18px rgba(0, 170, 255, 0.4);
+}
+.station-card.completed {
+  border-color: rgba(0, 255, 136, 0.5);
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.2);
+}
+.station-card.failed {
+  border-color: rgba(255, 51, 51, 0.5);
+  box-shadow: 0 0 12px rgba(255, 51, 51, 0.2);
+}
+.station-card.pending {
+  opacity: 0.45;
+}
+
+.station-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+.station-status-text {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.station-card.live  .station-status-text { color: #00aaff; }
+.station-card.completed .station-status-text { color: #00ff88; }
+.station-card.failed .station-status-text { color: #ff6666; }
+
+.station-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-top: 5px;
+}
+.station-badge.live {
+  background: rgba(0, 85, 170, 0.5);
+  color: #00aaff;
+  border: 1px solid #00aaff;
+}
+.station-badge.completed { background: rgba(0,100,50,0.4); color: #00ff88; border: 1px solid #00ff88; }
+.station-badge.failed    { background: rgba(100,0,0,0.4);  color: #ff6666; border: 1px solid #ff6666; }
+.station-badge.blocked   { background: rgba(100,60,0,0.4); color: #ff9900; border: 1px solid #ff9900; }
+
+/* ─── Live Blink Dot ─────────────────────────────────────────────────── */
+
+.blink-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00aaff;
+  animation: blink 0.9s step-start infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* ─── Sub-track (Testing lane) ───────────────────────────────────────── */
+
+.subtrack-wrapper {
+  margin-top: 28px;
+  padding: 18px 20px 16px;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.subtrack-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.subtrack-tab {
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  color: var(--color-muted);
+  background: transparent;
+  transition: all 0.2s ease;
+}
+.subtrack-tab.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  box-shadow: var(--glow-primary);
+}
+.subtrack-tab:hover:not(.active) {
+  border-color: var(--color-border-hi);
+  color: var(--color-subtext);
+}
+
+.subtrack-stops {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.stop-connector {
+  flex: 1;
+  height: 2px;
+  min-width: 20px;
+  max-width: 60px;
+  background: #1e3a5f;
+  transition: background 0.4s;
+}
+.stop-connector.completed { background: #00ff88; box-shadow: 0 0 6px #00aa55; }
+.stop-connector.active    { background: #00aaff; box-shadow: 0 0 6px #0055cc;
+                            animation: flow-dash-h 1s linear infinite; }
+
+@keyframes flow-dash-h {
+  0%   { opacity: 1; }
+  50%  { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+/* ─── Train Cursor ───────────────────────────────────────────────────── */
+
+.train-cursor {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #00aaff;
+  box-shadow: 0 0 12px #00aaff, 0 0 24px #0055cc;
+  position: absolute;
+  transition: left 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* ─── Progress Bar ───────────────────────────────────────────────────── */
+
+.transit-progress-bar {
+  height: 4px;
+  background: #1e3a5f;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.transit-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6, #f59e0b, #10b981);
+  background-size: 400% 100%;
+  border-radius: 2px;
+  transition: width 0.6s ease;
+  box-shadow: 0 0 6px rgba(99,102,241,0.5);
+}
+
+/* ─── Detail Expand Panel ────────────────────────────────────────────── */
+
+.station-detail-panel {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-top: 16px;
+}
+.station-detail-panel h4 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.station-detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-bottom: 4px;
+}
+.station-detail-row span:last-child { color: var(--color-text); font-weight: 600; }

@@ -1,0 +1,100 @@
+/* AURA Graph Animation Keyframes
+   Imported by specialist view components that need shared CSS animations.
+   All durations use CSS variables so theme JS can override if needed.
+*/
+
+/* Node enter: fade + scale from 0.8 → 1.0 */
+@keyframes graphNodeEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Edge draw-in: stroke-dashoffset from path-length → 0 */
+@keyframes graphEdgeDraw {
+  from {
+    stroke-dashoffset: 1000;
+    opacity: 0;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+/* Selected node amber pulse ring */
+@keyframes graphSelectionPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
+}
+
+/* Animated data-flow dot along an edge path */
+@keyframes graphFlowDot {
+  from {
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* View-switch: existing canvas fades out */
+@keyframes graphViewOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+/* View-switch: new canvas fades in */
+@keyframes graphViewIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Loading skeleton shimmer */
+@keyframes graphSkeleton {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+/* Utility classes */
+.nodeEnter {
+  animation: graphNodeEnter 150ms ease both;
+}
+
+.viewIn {
+  animation: graphViewIn 300ms ease both;
+}
+
+.viewOut {
+  animation: graphViewOut 200ms ease both;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 400px 100%;
+  animation: graphSkeleton 1.4s ease infinite;
+}

@@ -1,0 +1,197 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Aura UI — serves the built SPA and reverse-proxies the API.
+#
+# This is a .template so the official nginx image's envsubst entrypoint
+# (/docker-entrypoint.d/20-envsubst-on-templates.sh) fills in BACKEND_URL at
+# container start. That keeps ONE image usable in compose and in ECS.
+#
+# Routing lives here rather than in ALB listener rules on purpose: three paths
+# are simultaneously SPA routes and backend prefixes, and separating them needs
+# exact-vs-prefix matching plus Accept-header inspection. nginx expresses that
+# precisely; ALB rules do it awkwardly. Keeping it in one file also means the
+# local compose stack exercises the same logic that runs in production.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Static upstream, deliberately — do NOT reintroduce `resolver` ────────────
+# An earlier version used `resolver` + a variable in proxy_pass to force
+# per-request DNS, reasoning that Fargate task IPs change on every deploy.
+# That is WRONG under ECS Service Connect and produced:
+#     "backend could not be resolved (3: Host not found)"  -> 502 on every API call
+#
+# Service Connect uses an HTTP namespace with NO DNS records. It injects an
+# Envoy sidecar and maps the alias into the task's /etc/hosts. nginx's
+# `resolver` performs raw DNS queries against the nameserver you name and NEVER
+# consults /etc/hosts, so it asked the VPC resolver for a name that only exists
+# locally, and failed.
+#
+# A static upstream resolves through getaddrinfo(), which DOES read /etc/hosts,
+# so it picks up the Service Connect alias correctly. Changing task IPs are a
+# non-issue: the alias points at the local Envoy proxy, which tracks endpoints
+# itself. That is precisely the problem Service Connect exists to solve.
+#
+# It also works unchanged under compose, where `backend` is real container DNS.
+upstream backend {
+    server ${BACKEND_URL};
+    keepalive 32;
+}
+
+# WebSocket upgrade: "upgrade" when the client asked for it, "close" otherwise.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Vite emits hashed filenames, so assets are safe to cache hard.
+    # index.html must never be cached or clients pin to a stale bundle.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-store, must-revalidate";
+    }
+
+    # ── Load balancer target ─────────────────────────────────────────────────
+    # Served by nginx itself: the ALB must not depend on the backend to consider
+    # the UI healthy.
+    location = /healthz {
+        access_log off;
+        add_header Content-Type application/json;
+        return 200 '{"status":"ok","service":"ui"}';
+    }
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # SECURITY: bare /ws is the VS Code extension socket and has NO
+    # authentication (src/main.py:741 — contrast /ws/advisor, which verifies a
+    # JWT at src/routers/advisor.py:17). It reaches the coding assistant, whose
+    # tool registry includes run_bash → subprocess.run(shell=True)
+    # (src/tools/shell_tools.py:34-43), plus write_file and install_package.
+    # Exposing it publicly would publish unauthenticated RCE inside the task.
+    # It stays reachable only on a developer's local backend, never through here.
+    # ═════════════════════════════════════════════════════════════════════════
+    location = /ws {
+        return 404;
+    }
+
+    # Authenticated WebSockets: /ws/advisor, /ws/orchestrate
+    location ^~ /ws/ {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-ws.conf;
+    }
+
+    # ── Collision 1: /upload ─────────────────────────────────────────────────
+    # A React route AND a backend router prefix (src/main.py:173). Every API
+    # call uses a sub-segment (/upload/file, /upload/history, /upload/{id}), so
+    # exact-vs-prefix splits it cleanly with no ambiguity.
+    # NOTE: vite.config.ts:27 proxies /upload with no bypass, so a hard refresh
+    # on /upload is broken in local dev too — this config is stricter than dev.
+    location = /upload {
+        try_files /index.html =404;
+    }
+    location ^~ /upload/ {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-api.conf;
+    }
+
+    # ── Collision 2: /connectors ─────────────────────────────────────────────
+    # A React route AND a backend prefix (src/main.py:172), and unlike /upload
+    # the API call is BARE: src/api/connectors.ts:57 does GET /connectors, byte
+    # for byte identical to the browser navigation. The Accept header is the
+    # only discriminator — the same trick vite.config.ts:9-11 uses.
+    location = /connectors {
+        if ($http_accept ~* "text/html") {
+            rewrite ^ /index.html last;
+        }
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-api.conf;
+    }
+    location ^~ /connectors/ {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-api.conf;
+    }
+
+    # ── Collision 3: /login ──────────────────────────────────────────────────
+    # The backend serves its OWN html login page here (src/main.py:469,475) for
+    # the VS Code browser auth flow. The React login must win for real users.
+    location = /login {
+        try_files /index.html =404;
+    }
+
+    # ── WebSockets that live UNDER /api/ ─────────────────────────────────────
+    # These must be declared before the generic /api/ block. nginx picks the
+    # longest matching ^~ prefix, so these win. Without them these sockets would
+    # inherit proxy-api.conf, which has no Upgrade headers, and every one of
+    # them would fail to handshake.
+    location ^~ /api/ontology/ws {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-ws.conf;
+    }
+    location ^~ /api/qa/ws {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-ws.conf;
+    }
+    location ^~ /api/aiops/ws {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-ws.conf;
+    }
+
+    # ── Plain API prefixes ───────────────────────────────────────────────────
+    # /ontology is deliberately absent: the backend serves /api/ontology, so
+    # there is no collision and it falls through to the SPA. (The
+    # vite.config.ts:35 proxy rule for it is dead config.)
+    location ^~ /api/ {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-api.conf;
+    }
+    location ^~ /auth/ {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-api.conf;
+    }
+    location ^~ /gateway/ {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-api.conf;
+    }
+    location = /health {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-api.conf;
+    }
+
+    # ── API prefixes with NO backend router ──────────────────────────────────
+    # frontend/src/api/graph.ts calls /graph/cytoscape, /graph/stats,
+    # /graph/node/{id} and /graph/subgraph, but no /graph router exists in the
+    # backend (src/routers/ has no prefix="/graph"). Without these blocks those
+    # requests reach the SPA fallback below and return index.html with HTTP 200
+    # and content-type text/html. axios then does NOT throw, the caller's
+    # .catch() never fires, and the HTML string is stored as if it were data —
+    # which crashed AdvisorPage with
+    #     TypeError: undefined is not an object (evaluating 'u.total_triples.toLocaleString')
+    #
+    # Returning a real 404 makes the failure honest: axios rejects, the caller's
+    # error path runs, and the UI degrades instead of crashing. Delete these
+    # blocks if a /graph router is ever implemented.
+    location ^~ /graph/  { return 404; }
+    location ^~ /sparql/ { return 404; }
+
+    # ── SPA fallback ─────────────────────────────────────────────────────────
+    # BrowserRouter uses the HTML5 history API, so deep links like
+    # /settings/users must return index.html rather than 404.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    client_max_body_size 25m;   # /upload/file caps at 20 MB (routers/upload.py:29)
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript
+               application/wasm image/svg+xml;
+    gzip_min_length 1024;
+}
