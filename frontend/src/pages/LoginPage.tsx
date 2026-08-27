@@ -31,7 +31,26 @@ export function LoginPage() {
   const { login } = useAuthStore()
 
   const isPluginRedirect = searchParams.get('redirectplugin') === 'true'
-  const callbackUri = searchParams.get('callbackUri') || 'vscode://aura.aura/auth/callback'  // must match publisher.name
+  // `openExternal()` round-trips the extension's login URL through VS Code's
+  // Uri.parse()/toString(), which decode every component and re-encode with a
+  // different table — so a callback carrying `?windowId=2` can arrive here,
+  // after useSearchParams' own decode, as `...callback%3FwindowId%253D2`.
+  // Left as-is the `?` separator below folds windowId and access_token into the
+  // *path*, where VS Code's URL router cannot see windowId and hands the token
+  // to whichever window was last active instead of the one that signed in.
+  const normaliseCallback = (raw: string): string => {
+    let out = raw
+    for (let i = 0; i < 3 && !out.includes('?'); i++) {
+      let next: string
+      try { next = decodeURIComponent(out) } catch { break }
+      if (next === out) break
+      out = next
+    }
+    return out
+  }
+  const callbackUri = normaliseCallback(
+    searchParams.get('callbackUri') || 'vscode://aura.aura/auth/callback',  // must match publisher.name
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

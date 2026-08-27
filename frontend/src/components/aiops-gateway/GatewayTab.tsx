@@ -6,19 +6,27 @@ import {
 import {
   Activity, Cpu, Users, Shield, Key, HeartPulse,
   ClipboardList, RefreshCw, CheckCircle, AlertTriangle,
-  XCircle, Trash2,
+  XCircle, Trash2, Terminal,
 } from 'lucide-react'
 import {
   aiopsGatewayApi,
   type GatewayOverview, type ByModelRow, type ByToolRow,
   type TimeseriesRow, type Provider, type ProviderHealth,
   type GatewayKey, type AuditLog, type BudgetStatus,
+  type ByToolModelRow, type ClaudeCodeUsage,
 } from '../../api/aiopsGateway'
+import ModelUsageTable from './ModelUsageTable'
+import { modelColor } from './usageFormat'
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 const COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#9085e9', '#10b981', '#fb8c00']
 const TOOL_COLORS: Record<string, string> = {
   'aura-plugin': '#3987e5',
+  // Emitted by the OTLP receiver, derived from Claude Code's app.entrypoint.
+  'claude-code-ext': '#d55181',
+  'claude-code-cli': '#3987e5',
+  'claude-code-sdk': '#c98500',
+  'claude-code':     '#3987e5',
   'claude-ext':  '#d55181',
   'claude-cli':  '#3987e5',
   'codex-cli':   '#d95926',
@@ -29,6 +37,10 @@ const TOOL_COLORS: Record<string, string> = {
 }
 const TOOL_NAMES: Record<string, string> = {
   'aura-plugin': 'AURA Chat',
+  'claude-code-ext': 'Claude Code (VS Code)',
+  'claude-code-cli': 'Claude Code (CLI)',
+  'claude-code-sdk': 'Claude Code (SDK)',
+  'claude-code':     'Claude Code',
   'claude-ext':  'Claude Code Ext',
   'claude-cli':  'Claude Code CLI',
   'codex-cli':   'Codex CLI',
@@ -45,11 +57,12 @@ function fmtK(v: number) {
 }
 
 // ── Sub-nav ──────────────────────────────────────────────────────────────────
-type SubTab = 'overview' | 'by-model' | 'by-user' | 'providers' | 'budgets' | 'keys' | 'health' | 'audit'
+type SubTab = 'overview' | 'claude-code' | 'by-model' | 'by-user' | 'providers' | 'budgets' | 'keys' | 'health' | 'audit'
 
 const SUB_TABS: { id: SubTab; label: string; icon: React.ReactNode }[] = [
-  { id: 'overview',  label: 'Overview',  icon: <Activity size={12} /> },
-  { id: 'by-model',  label: 'By Model',  icon: <Cpu size={12} /> },
+  { id: 'overview',    label: 'Overview',    icon: <Activity size={12} /> },
+  { id: 'claude-code', label: 'Claude Code', icon: <Terminal size={12} /> },
+  { id: 'by-model',    label: 'By Model',    icon: <Cpu size={12} /> },
   { id: 'by-user',   label: 'By User',   icon: <Users size={12} /> },
   { id: 'providers', label: 'Providers', icon: <Shield size={12} /> },
   { id: 'budgets',   label: 'Budgets',   icon: <AlertTriangle size={12} /> },
@@ -191,6 +204,177 @@ function OverviewPane() {
 }
 
 // ── By Model ─────────────────────────────────────────────────────────────────
+// ── Claude Code ──────────────────────────────────────────────────────────────
+//
+// Fed by /api/aiops/gateway/usage/claude-code, which is built from Claude Code's
+// own OpenTelemetry export (received at /otlp/v1/logs). Cost shown here is what
+// Claude Code itself reported, so it reconciles with the /usage command inside a
+// Claude Code session rather than being an independent estimate.
+function ClaudeCodePane() {
+  const [period, setPeriod] = useState('7d')
+  const [data, setData] = useState<ClaudeCodeUsage | null>(null)
+  const [matrix, setMatrix] = useState<ByToolModelRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(() => {
+    setLoading(true)
+    Promise.all([
+      aiopsGatewayApi.getClaudeCode(period).then(r => r.data).catch(() => null),
+      aiopsGatewayApi.getByToolModel(period).then(r => r.data.byToolModel).catch(() => []),
+    ]).then(([cc, m]) => {
+      setData(cc)
+      setMatrix(m)
+    }).finally(() => setLoading(false))
+  }, [period])
+
+  useEffect(load, [load])
+
+  const t = data?.totals
+  const hasData = !!t && (t.calls ?? 0) > 0
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        {['today', '7d', '30d', '90d'].map(p => (
+          <button key={p} onClick={() => setPeriod(p)}
+            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: '1px solid var(--color-border)',
+              background: period === p ? 'var(--color-primary)' : 'var(--color-card)',
+              color: period === p ? '#fff' : 'var(--color-muted)', cursor: 'pointer' }}>
+            {p}
+          </button>
+        ))}
+        <button onClick={load} title="Refresh"
+          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11,
+            padding: '3px 10px', borderRadius: 6, border: '1px solid var(--color-border)',
+            background: 'var(--color-card)', color: 'var(--color-muted)', cursor: 'pointer' }}>
+          <RefreshCw size={11} /> Refresh
+        </button>
+      </div>
+
+      {loading && !data && (
+        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>Loading…</div>
+      )}
+
+      {!loading && !hasData && (
+        <div style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)',
+          borderRadius: 10, padding: 18, fontSize: 12, color: 'var(--color-muted)', lineHeight: 1.7 }}>
+          <div style={{ fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>
+            No Claude Code usage recorded yet
+          </div>
+          Claude Code reports its own token and cost telemetry. To start capturing it, enable
+          <code style={{ margin: '0 4px' }}>aura.telemetryEnabled</code> in the AURA VS Code
+          extension — it writes an OTLP block into <code>~/.claude/settings.json</code>, which
+          covers both the CLI and the VS Code extension.
+          <div style={{ marginTop: 8 }}>
+            Usage appears within about a minute of a session, matching the telemetry export interval.
+          </div>
+        </div>
+      )}
+
+      {hasData && (
+        <>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <Tile label="Total cost" value={fmt$(t!.costUsd)} sub={`${t!.calls} requests`} />
+            <Tile label="Total tokens" value={fmtK(t!.totalTokens)} />
+            <Tile label="Cache hit rate" value={`${(t!.cacheHitRate ?? 0).toFixed(1)}%`}
+              sub={`${fmtK(t!.cacheReadTokens)} cached reads`} />
+            <Tile label="Avg latency" value={`${t!.avgLatencyMs ?? 0} ms`} />
+            {(t!.errorRate ?? 0) > 0 && (
+              <Tile label="Error rate" value={`${(t!.errorRate ?? 0).toFixed(1)}%`} />
+            )}
+          </div>
+
+          {/* Surface split — CLI vs VS Code extension vs SDK */}
+          {(data!.bySurface?.length ?? 0) > 0 && (
+            <div style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)',
+              borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: 'var(--color-text)' }}>
+                By surface
+              </div>
+              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                {data!.bySurface.map(row => (
+                  <div key={row.tool} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: '50%',
+                      background: TOOL_COLORS[row.tool] ?? '#9ca3af', display: 'inline-block' }} />
+                    <span style={{ color: 'var(--color-text)', fontWeight: 600 }}>
+                      {TOOL_NAMES[row.tool] ?? row.tool}
+                    </span>
+                    <span style={{ color: 'var(--color-muted)' }}>
+                      {fmt$(row.costUsd)} · {row.calls} req · {fmtK(row.totalTokens)} tok
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Daily cost */}
+          {(data!.timeseries?.length ?? 0) > 1 && (
+            <div style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)',
+              borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'var(--color-text)' }}>
+                Daily cost
+              </div>
+              <ResponsiveContainer width="100%" height={140}>
+                <AreaChart data={data!.timeseries}>
+                  <defs>
+                    <linearGradient id="ccCostGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3987e5" stopOpacity={0.5} />
+                      <stop offset="100%" stopColor="#3987e5" stopOpacity={0.04} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--color-muted)' }}
+                    tickFormatter={(d: string) => (d || '').slice(5)} />
+                  <YAxis tick={{ fontSize: 10, fill: 'var(--color-muted)' }}
+                    tickFormatter={(v: number) => '$' + v.toFixed(2)} width={52} />
+                  <Tooltip formatter={(v: number) => fmt$(v)} />
+                  <Area type="monotone" dataKey="costUsd" stroke="#3987e5" strokeWidth={2}
+                    fill="url(#ccCostGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Per-model — the model-wise breakdown */}
+          <div style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)',
+            borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>
+              By model
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--color-muted)', marginBottom: 8 }}>
+              Cost as reported by Claude Code. Cache reads are billed at roughly a tenth of the
+              input rate, cache writes at 1.25x–2x — which is why they are shown separately.
+            </div>
+            <ModelUsageTable rows={data!.byModel} />
+          </div>
+
+          {/* Model x surface matrix */}
+          {(data!.byModelSurface?.length ?? 0) > 1 && (
+            <div style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)',
+              borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'var(--color-text)' }}>
+                By model and surface
+              </div>
+              <ModelUsageTable rows={data!.byModelSurface} showTool toolNames={TOOL_NAMES} />
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Every tool, for comparison */}
+      {matrix.length > 0 && (
+        <div style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)',
+          borderRadius: 10, padding: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'var(--color-text)' }}>
+            All tools by model
+          </div>
+          <ModelUsageTable rows={matrix} showTool toolNames={TOOL_NAMES} maxRows={25} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ByModelPane() {
   const [byModel, setByModel] = useState<ByModelRow[]>([])
   const [period, setPeriod] = useState('7d')
@@ -218,36 +402,14 @@ function ByModelPane() {
           <PieChart width={190} height={190}>
             <Pie data={byModel.slice(0, 6)} dataKey="costUsd" nameKey="model" cx="50%" cy="50%" outerRadius={80} labelLine={false}
               label={({ pct }: any) => pct > 8 ? `${Math.round(pct)}%` : ''}>
-              {byModel.slice(0, 6).map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              {byModel.slice(0, 6).map((r, i) => <Cell key={i} fill={modelColor(r.model) ?? COLORS[i % COLORS.length]} />)}
             </Pie>
             <Tooltip formatter={(v: number) => fmt$(v)} />
           </PieChart>
         </div>
-        {/* Table */}
-        <div style={{ flex: 1, overflowX: 'auto', minWidth: 0 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr style={{ color: 'var(--color-muted)', textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}>
-                <th style={{ padding: '4px 8px' }}>Model</th>
-                <th style={{ padding: '4px 8px', textAlign: 'right' }}>Tokens</th>
-                <th style={{ padding: '4px 8px', textAlign: 'right' }}>Calls</th>
-                <th style={{ padding: '4px 8px', textAlign: 'right' }}>Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {byModel.map((r, i) => (
-                <tr key={r.model} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  <td style={{ padding: '6px 8px', color: 'var(--color-text)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: COLORS[i % COLORS.length], marginRight: 6 }} />
-                    {r.model}
-                  </td>
-                  <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--color-muted)' }}>{fmtK(r.inputTokens + r.outputTokens)}</td>
-                  <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--color-muted)' }}>{r.calls}</td>
-                  <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: 'var(--color-text)' }}>{fmt$(r.costUsd)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Table — cache columns come from the shared component */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <ModelUsageTable rows={byModel} emptyMessage="No model usage in this period." />
         </div>
       </div>
     </div>
@@ -491,8 +653,9 @@ export default function GatewayTab() {
 
       {/* Pane */}
       <div style={{ paddingTop: 4 }}>
-        {sub === 'overview'  && <OverviewPane />}
-        {sub === 'by-model'  && <ByModelPane />}
+        {sub === 'overview'    && <OverviewPane />}
+        {sub === 'claude-code' && <ClaudeCodePane />}
+        {sub === 'by-model'    && <ByModelPane />}
         {sub === 'by-user'   && <ByUserPane />}
         {sub === 'providers' && <ProvidersPane />}
         {sub === 'budgets'   && <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>Budget management coming soon — backend ready.</div>}

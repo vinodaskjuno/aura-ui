@@ -121,10 +121,37 @@ server {
     }
 
     # ── Collision 3: /login ──────────────────────────────────────────────────
-    # The backend serves its OWN html login page here (src/main.py:469,475) for
-    # the VS Code browser auth flow. The React login must win for real users.
+    # Two different pages legitimately live at /login:
+    #   - the React SPA login, for people using a browser
+    #   - the backend's own HTML page (src/main.py _LOGIN_HTML), which reads the
+    #     callbackUri query param and redirects to vscode://aura.aura/auth/callback
+    #
+    # Serving the SPA unconditionally (as this did) breaks VS Code plugin sign-in
+    # completely behind nginx: the plugin opens
+    #     /login?redirectplugin=true&callbackUri=vscode%3A%2F%2F...
+    # gets the React app, which ignores callbackUri, and the token never reaches
+    # the extension. The flow only appeared to work in local dev, where requests
+    # hit uvicorn directly with no nginx in front.
+    #
+    # Discriminate on the query param the plugin always sends.
+    #
+    # `return` is the only directive used inside `if`, and the named location
+    # uses a bare `proxy_pass http://backend;` with NO variable — a variable in
+    # proxy_pass would switch nginx to per-request DNS and need `resolver`,
+    # which is exactly the 502-on-every-call failure documented at the top of
+    # this file. A named location forwards the original URI and query string
+    # unchanged, so no URI needs building.
     location = /login {
+        error_page 418 = @plugin_login;
+        if ($arg_redirectplugin) {
+            return 418;
+        }
         try_files /index.html =404;
+    }
+
+    location @plugin_login {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-api.conf;
     }
 
     # ── WebSockets that live UNDER /api/ ─────────────────────────────────────
@@ -160,6 +187,19 @@ server {
     location ^~ /gateway/ {
         proxy_pass http://backend;
         include /etc/nginx/snippets/proxy-api.conf;
+    }
+    # OTLP telemetry receiver — Claude Code posts its own token/cost metrics and
+    # events here (routers/otlp.py). Batched exports are larger than a normal API
+    # call, so this block raises the body limit above the server-wide 25m; the
+    # backend enforces its own cap via settings.otlp_max_body_bytes.
+    location ^~ /otlp/ {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-api.conf;
+        client_max_body_size 16m;
+        # Exports are one-shot POSTs, not streams — buffering them keeps the
+        # backend from holding a connection open on a slow client.
+        proxy_buffering on;
+        proxy_request_buffering on;
     }
     location = /health {
         proxy_pass http://backend;

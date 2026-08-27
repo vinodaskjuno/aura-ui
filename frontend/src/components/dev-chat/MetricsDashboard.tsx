@@ -9,12 +9,43 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
 import { getTokenMetrics, type MetricPeriod } from '../../api/metrics'
+import { aiopsGatewayApi, type TimeseriesRow } from '../../api/aiopsGateway'
 
 interface MetricsDashboardProps {
   onClose?: () => void
 }
 
 const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4']
+
+// MetricPeriod -> the period token the gateway usage endpoints accept.
+const TIMESERIES_PERIOD: Record<MetricPeriod, string> = {
+  today: 'today',
+  week: '7d',
+  month: '30d',
+  all: '90d',
+}
+
+function formatDayLabel(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) { return iso }
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+
+/**
+ * Percentage change between the first and second half of a series.
+ * Returns undefined when there is not enough data to say anything — the card
+ * then renders without a trend arrow rather than showing a made-up one.
+ */
+function trendPct(series: Array<Record<string, number>>, key: string): number | undefined {
+  if (series.length < 4) { return undefined }
+  const mid = Math.floor(series.length / 2)
+  const sum = (rows: Array<Record<string, number>>) =>
+    rows.reduce((acc, r) => acc + (Number(r[key]) || 0), 0)
+  const prev = sum(series.slice(0, mid))
+  const curr = sum(series.slice(mid))
+  if (prev <= 0) { return undefined }
+  return ((curr - prev) / prev) * 100
+}
 
 // Custom tooltip for charts
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -179,35 +210,31 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
   async function loadMetrics() {
     setLoading(true)
     try {
-      const data = await getTokenMetrics(period)
+      // The daily series comes from the gateway rollups, which are populated by
+      // Claude Code's telemetry and by AURA's own agent usage. This panel used
+      // to fill these charts with Math.random() values, so every token count and
+      // dollar figure below the KPI row was invented.
+      const [data, series] = await Promise.all([
+        getTokenMetrics(period),
+        aiopsGatewayApi
+          .getTimeseries(TIMESERIES_PERIOD[period])
+          .then(r => r.data.timeseries)
+          .catch(() => [] as TimeseriesRow[]),
+      ])
       setMetrics(data)
-      
-      // Generate historical data for charts (mock data for demonstration)
-      // In production, you'd fetch this from your backend
-      const days = period === 'today' ? 24 : period === 'week' ? 7 : 30
-      const historical = Array.from({ length: days }, (_, i) => {
-        const date = new Date()
-        if (period === 'today') {
-          date.setHours(date.getHours() - (days - i - 1))
-          return {
-            name: `${date.getHours()}:00`,
-            tokens: Math.floor(Math.random() * 50000 + 10000),
-            cost: Math.random() * 0.5 + 0.1,
-            input: Math.floor(Math.random() * 30000 + 5000),
-            output: Math.floor(Math.random() * 20000 + 5000),
-          }
-        } else {
-          date.setDate(date.getDate() - (days - i - 1))
-          return {
-            name: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            tokens: Math.floor(Math.random() * 200000 + 50000),
-            cost: Math.random() * 5 + 1,
-            input: Math.floor(Math.random() * 120000 + 30000),
-            output: Math.floor(Math.random() * 80000 + 20000),
-          }
-        }
-      })
-      setHistoricalData(historical)
+      setHistoricalData(
+        series.map(row => ({
+          name: formatDayLabel(row.date),
+          date: row.date,
+          tokens: row.totalTokens ?? 0,
+          cost: row.costUsd ?? 0,
+          input: row.inputTokens ?? 0,
+          output: row.outputTokens ?? 0,
+          cacheRead: row.cacheReadTokens ?? 0,
+          cacheWrite: row.cacheCreationTokens ?? 0,
+          calls: row.calls ?? 0,
+        })),
+      )
     } catch (err) {
       console.error('Failed to load metrics:', err)
     } finally {
@@ -244,6 +271,56 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
   const avgCostPerSession = metrics.totalSessions > 0 
     ? metrics.totalCost / metrics.totalSessions 
     : 0
+
+  // Trends derived from the real series. undefined => no arrow is drawn.
+  const tokenTrend = trendPct(historicalData, 'tokens')
+  const costTrend = trendPct(historicalData, 'cost')
+  const callTrend = trendPct(historicalData, 'calls')
+
+  // Cache economics — only meaningful once cache tokens are being reported.
+  const cacheRead = metrics.totalCacheReadTokens ?? 0
+  const cacheWrite = metrics.totalCacheCreationTokens ?? 0
+  const allTokens = metrics.totalTokens
+    ?? (metrics.totalInputTokens + metrics.totalOutputTokens + cacheRead + cacheWrite)
+  const cacheHitRate = metrics.cacheHitRate
+    ?? (allTokens > 0 ? (cacheRead / allTokens) * 100 : 0)
+  const topModel = (metrics.byModel ?? [])[0]
+  const topModelShare = topModel && metrics.totalCost > 0
+    ? (topModel.cost / metrics.totalCost) * 100
+    : 0
+
+  // Insights, all computed from the data actually fetched above.
+  const insights: Array<{ title: string; detail: string; color: string }> = []
+
+  if (allTokens > 0 && (cacheRead > 0 || cacheWrite > 0)) {
+    const good = cacheHitRate >= 50
+    insights.push({
+      title: `${good ? '✓' : '⚠'} Cache hit rate: ${cacheHitRate.toFixed(0)}%`,
+      detail: good
+        ? `${cacheRead.toLocaleString()} tokens served from cache at ~10% of the input rate.`
+        : 'A low hit rate usually means the prompt prefix is changing between calls, '
+          + 'which forces a full re-read at the input rate.',
+      color: good ? '#10b981' : '#f59e0b',
+    })
+  }
+
+  if (costTrend !== undefined) {
+    const up = costTrend > 0
+    insights.push({
+      title: `${up ? '⚠' : '✓'} Cost trend: ${up ? '+' : ''}${costTrend.toFixed(0)}%`,
+      detail: `Second half of this period versus the first, across ${historicalData.length} days.`,
+      color: up ? '#f59e0b' : '#10b981',
+    })
+  }
+
+  if (topModel && topModelShare > 0) {
+    insights.push({
+      title: `ℹ ${topModel.model}: ${topModelShare.toFixed(0)}% of spend`,
+      detail: `$${(topModel.cost ?? 0).toFixed(4)} across ${topModel.calls ?? 0} calls`
+        + `${metrics.byModel.length > 1 ? ` of ${metrics.byModel.length} models used.` : '.'}`,
+      color: '#6366f1',
+    })
+  }
 
   // Model breakdown for pie chart
   const modelData = metrics.byModel.map((m: any, idx: number) => ({
@@ -347,7 +424,7 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
         <AnimatedMetricCard
           title="Total Tokens"
           value={totalTokens.toLocaleString()}
-          change={15.3}
+          change={tokenTrend}
           icon={<Zap size={20} />}
           color="#6366f1"
           delay={0}
@@ -355,7 +432,7 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
         <AnimatedMetricCard
           title="Total Cost"
           value={`$${metrics.totalCost.toFixed(2)}`}
-          change={-8.2}
+          change={costTrend}
           icon={<DollarSign size={20} />}
           color="#f59e0b"
           delay={0.1}
@@ -363,7 +440,7 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
         <AnimatedMetricCard
           title="Sessions"
           value={metrics.totalSessions}
-          change={22.7}
+          change={callTrend}
           icon={<MessageSquare size={20} />}
           color="#10b981"
           delay={0.2}
@@ -763,50 +840,37 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
             Insights & Recommendations
           </h3>
         </div>
+        {/*
+          Every tile below is derived from the fetched data. These used to be
+          hardcoded strings ("Efficiency Score: 87%", "Cost Trend: +8% this
+          week", "Peak Usage: 2-4 PM") that never changed regardless of usage.
+          When there is nothing real to say, we say that instead of inventing it.
+        */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
           gap: '12px',
         }}>
-          <div style={{
-            padding: '16px',
-            borderRadius: '10px',
-            background: 'rgba(16, 185, 129, 0.1)',
-            border: '1px solid rgba(16, 185, 129, 0.2)',
-          }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: '#10b981', marginBottom: '6px' }}>
-              ✓ Efficiency Score: 87%
+          {insights.length === 0 && (
+            <div style={{ fontSize: '11px', color: 'var(--color-muted)', gridColumn: '1 / -1' }}>
+              Not enough usage recorded yet to draw conclusions.
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--color-subtext)' }}>
-              Your input/output ratio is optimal. Continue using context-aware prompts.
+          )}
+          {insights.map((tile) => (
+            <div key={tile.title} style={{
+              padding: '16px',
+              borderRadius: '10px',
+              background: `${tile.color}1a`,
+              border: `1px solid ${tile.color}33`,
+            }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: tile.color, marginBottom: '6px' }}>
+                {tile.title}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--color-subtext)' }}>
+                {tile.detail}
+              </div>
             </div>
-          </div>
-          <div style={{
-            padding: '14px',
-            borderRadius: '10px',
-            background: 'rgba(245, 158, 11, 0.1)',
-            border: '1px solid rgba(245, 158, 11, 0.2)',
-          }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: '#f59e0b', marginBottom: '6px' }}>
-              ⚠ Cost Trend: +8% this week
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--color-subtext)' }}>
-              Consider switching to more efficient models for routine tasks.
-            </div>
-          </div>
-          <div style={{
-            padding: '14px',
-            borderRadius: '10px',
-            background: 'rgba(99, 102, 241, 0.1)',
-            border: '1px solid rgba(99, 102, 241, 0.2)',
-          }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: '#6366f1', marginBottom: '6px' }}>
-              ℹ Peak Usage: 2-4 PM
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--color-muted)' }}>
-              Higher token consumption during afternoon hours.
-            </div>
-          </div>
+          ))}
         </div>
       </motion.div>
     </motion.div>

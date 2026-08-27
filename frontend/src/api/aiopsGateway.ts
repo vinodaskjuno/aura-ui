@@ -4,44 +4,81 @@ export interface GatewayOverview {
   period: string
   totalInputTokens: number
   totalOutputTokens: number
+  totalCacheReadTokens: number
+  totalCacheCreationTokens: number
   totalTokens: number
   totalCostUsd: number
   totalCalls: number
   uniqueUsers: number
+  uniqueModels: number
+  cacheHitRate: number
+  avgLatencyMs: number
+  errorRate: number
+  claudeCodeCalls: number
+  claudeCodeCostUsd: number
+  /** @deprecated retained for backwards compatibility — same as totalCalls */
   gatewayCalls: number
+  /** @deprecated retained for backwards compatibility — same as totalCostUsd */
   gatewayCostUsd: number
 }
 
-export interface ByModelRow {
+/**
+ * Fields shared by every usage breakdown row.
+ *
+ * Cache tokens are not a detail: on a Claude Code session cache reads are
+ * typically the majority of token volume, billed at ~0.1x the input rate.
+ * Folding them into `inputTokens` overstates cost significantly.
+ */
+export interface UsageMetrics {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+  totalTokens: number
+  costUsd: number
+  calls: number
+  errors: number
+  /** cacheReadTokens as a percentage of totalTokens */
+  cacheHitRate: number
+  avgLatencyMs: number
+  errorRate: number
+}
+
+export interface ByModelRow extends UsageMetrics {
   model: string
-  inputTokens: number
-  outputTokens: number
-  costUsd: number
-  calls: number
 }
 
-export interface ByToolRow {
+export interface ByToolRow extends UsageMetrics {
   tool: string
-  inputTokens: number
-  outputTokens: number
-  costUsd: number
-  calls: number
 }
 
-export interface ByUserRow {
+export interface ByUserRow extends UsageMetrics {
   userId: string
-  inputTokens: number
-  outputTokens: number
-  costUsd: number
-  calls: number
 }
 
-export interface TimeseriesRow {
+export interface TimeseriesRow extends UsageMetrics {
   date: string
-  inputTokens: number
-  outputTokens: number
-  costUsd: number
-  calls: number
+}
+
+/** One (tool, model) pair — the model-wise matrix. */
+export interface ByToolModelRow extends UsageMetrics {
+  tool: string
+  model: string
+}
+
+/**
+ * Claude Code usage, from Claude Code's own OpenTelemetry export (received at
+ * /otlp/v1/logs). Cost is what Claude Code itself reported, so it reconciles
+ * with the /usage command inside a Claude Code session.
+ */
+export interface ClaudeCodeUsage {
+  period: string
+  totals: UsageMetrics
+  byModel: ByModelRow[]
+  /** CLI vs VS Code extension vs SDK */
+  bySurface: ByToolRow[]
+  byModelSurface: ByToolModelRow[]
+  timeseries: TimeseriesRow[]
 }
 
 export interface Provider {
@@ -95,9 +132,17 @@ export interface AuditLog {
   model: string
   inputTokens: number
   outputTokens: number
+  cacheReadTokens?: number
+  cacheCreationTokens?: number
   cost: string
+  /** Cost the provider itself reported, when available. */
+  reportedCost?: string
+  /** Our own estimate — compare against reportedCost to spot stale rate cards. */
+  computedCost?: string
   tool?: string
   source?: string
+  sessionId?: string
+  querySource?: string
   timestamp: string
   latencyMs?: number
   statusCode?: number
@@ -112,6 +157,8 @@ export const aiopsGatewayApi = {
   getByTool:     (period = '7d')    => client.get<{ byTool: ByToolRow[] }>(`${BASE}/usage/by-tool?period=${period}`),
   getByUser:     (period = '7d')    => client.get<{ byUser: ByUserRow[] }>(`${BASE}/usage/by-user?period=${period}`),
   getTimeseries: (period = '14d')   => client.get<{ timeseries: TimeseriesRow[] }>(`${BASE}/usage/timeseries?period=${period}`),
+  getByToolModel: (period = '7d')    => client.get<{ byToolModel: ByToolModelRow[] }>(`${BASE}/usage/by-tool-model?period=${period}`),
+  getClaudeCode:  (period = '7d')    => client.get<ClaudeCodeUsage>(`${BASE}/usage/claude-code?period=${period}`),
 
   // Providers
   getProviders:   ()                         => client.get<Provider[]>(`${BASE}/providers`),
