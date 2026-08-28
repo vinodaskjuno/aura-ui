@@ -180,7 +180,11 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
       } else if (repoChoice === 'git-repo' && repoUrl.trim()) {
         repos.push({ repoType, sourceType: 'git', repoUrl: repoUrl.trim(), token: repoToken.trim() || undefined, branch: repoBranch.trim() || undefined })
       } else if (repoChoice === 'local' && localPath.trim()) {
-        repos.push({ repoType: 'local', sourceType: 'local', repoUrl: localPath.trim() })
+        // `localPath` is the field code_analysis_agent reads; writing the path into
+        // `repoUrl` meant local-folder projects always analysed as empty. Send both
+        // so the edit path (which falls back to repoUrl) keeps working.
+        repos.push({ repoType: 'local', sourceType: 'local',
+                     localPath: localPath.trim(), repoUrl: localPath.trim() })
       }
       try {
         const res = await projectsApi.create({

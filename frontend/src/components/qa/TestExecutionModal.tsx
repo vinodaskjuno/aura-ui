@@ -284,7 +284,7 @@ export default function TestExecutionModal({
           // API-only: fire POST /api/qa/run
           setPhase('running')
           recordPhaseTime('running')
-          qaApi.run(runId, selectedTypes)
+          qaApi.run(runId, selectedTypes, project.projectId as string)
             .then(() => {
               setPhase('complete')
               recordPhaseTime('complete')

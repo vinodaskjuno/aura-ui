@@ -64,8 +64,8 @@ export const qaApi = {
     coverage_target?: number
     focus_areas?: string[]
   }) => client.post(`/api/qa/generate`, data),
-  run: (run_id?: string, test_types?: string[]) =>
-    client.post(`/api/qa/run`, { run_id, test_types }),
+  run: (run_id?: string, test_types?: string[], project_id?: string) =>
+    client.post(`/api/qa/run`, { run_id, test_types, project_id }),
   getRunDetail: (runId: string) => client.get<TestRun>(`/api/qa/runs/${runId}`),
   getArtifacts: (runId: string) => client.get<TestArtifact[]>(`/api/qa/runs/${runId}/artifacts`),
   getActivity: () => client.get('/api/qa/activity'),

@@ -77,7 +77,7 @@ function RunDetailDrawer({ run, projectId, onClose, onRefresh }: {
 
   const handleRun = async () => {
     setRunning(true)
-    try { await qaApi.run(run.testRunId); onRefresh() } finally { setRunning(false) }
+    try { await qaApi.run(run.testRunId, undefined, projectId); onRefresh() } finally { setRunning(false) }
   }
 
   const total = (run.totalPassed ?? 0) + (run.totalFailed ?? 0) + (run.totalSkipped ?? 0)

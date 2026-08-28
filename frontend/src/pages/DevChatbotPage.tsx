@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { applyChange, cloneRepo, discardChange } from '../api/gitOps'
 import {
   Bot, X, Loader2, Send, RefreshCw, BarChart3, Shield, Server,
   Users, Layers, Clock, Trash2, MessageSquare, GitBranch, Plus, ChevronRight,
   ExternalLink, TrendingUp, DollarSign, Pencil, ArrowLeft,
-  PanelLeftOpen, PanelLeftClose, SquarePen, User,
+  PanelLeftOpen, PanelLeftClose, SquarePen, User, Wrench, Check,
 } from 'lucide-react'
 import { searchNodes, getOntologyStats, type OntologyStats } from '../api/ontologyUniverse'
 import { getChatSessions, createChatSession, deleteChatSession, getChatStats, type ChatSession } from '../api/chatSessions'
@@ -35,11 +36,22 @@ interface TokenInfo {
   cost: number
 }
 
+interface ToolEvent {
+  name: string
+  input?: Record<string, unknown>
+  output?: Record<string, unknown>
+  /** Set when the tool staged a file change awaiting approval. */
+  stagedPath?: string
+  diff?: string
+  applied?: 'applied' | 'discarded'
+}
+
 interface ChatMsg {
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'tool'
   content: string
   isStreaming?: boolean
   tokens?: TokenInfo
+  tool?: ToolEvent
 }
 
 type Phase = 'select' | 'chat'
@@ -380,6 +392,110 @@ function renderMarkdown(content: string): React.ReactNode {
   return <>{nodes}</>
 }
 
+// ── Agent tool activity ───────────────────────────────────────────────────────
+// The model's file reads and proposed edits, made visible. A staged write is shown
+// as a diff with Apply / Discard — nothing reaches disk until the operator says so.
+function ToolCard({ tool, projectId, onResolved }: {
+  tool: ToolEvent; projectId: string; onResolved: (path: string, how: 'applied' | 'discarded') => void
+}) {
+  const [busy, setBusy] = useState<'applied' | 'discarded' | null>(null)
+  const [error, setError] = useState('')
+  const pending = !!tool.stagedPath && !tool.applied
+  const err = tool.output?.error as string | undefined
+
+  const act = async (how: 'applied' | 'discarded') => {
+    if (!tool.stagedPath) return
+    setBusy(how); setError('')
+    try {
+      if (how === 'applied') await applyChange(projectId, tool.stagedPath)
+      else await discardChange(projectId, tool.stagedPath)
+      onResolved(tool.stagedPath, how)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const label = TOOL_LABELS[tool.name] ?? tool.name
+  const subject = String(tool.input?.file_path ?? tool.input?.directory ?? '')
+
+  return (
+    <div style={{
+      margin: '6px 0 6px 34px', borderRadius: 8, overflow: 'hidden',
+      border: `1px solid ${pending ? '#f59e0b55' : 'var(--color-border)'}`,
+      background: pending ? '#f59e0b0f' : 'var(--color-card)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 11px' }}>
+        <Wrench size={12} color={err ? '#ef4444' : pending ? '#f59e0b' : 'var(--color-muted)'} />
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)' }}>{label}</span>
+        {subject && (
+          <code style={{ fontSize: 11, color: 'var(--color-muted)',
+            fontFamily: 'var(--font-mono)' }}>{subject}</code>
+        )}
+        <div style={{ flex: 1 }} />
+        {!tool.output && (
+          <span style={{ fontSize: 10.5, color: 'var(--color-muted)' }}>running…</span>
+        )}
+        {tool.applied && (
+          <span style={{ fontSize: 10.5, fontWeight: 700,
+            color: tool.applied === 'applied' ? '#10b981' : 'var(--color-muted)' }}>
+            {tool.applied === 'applied' ? 'APPLIED' : 'DISCARDED'}
+          </span>
+        )}
+        {pending && (
+          <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 4,
+            background: '#f59e0b22', color: '#f59e0b' }}>AWAITING APPROVAL</span>
+        )}
+      </div>
+
+      {err && (
+        <div style={{ padding: '0 11px 9px', fontSize: 11.5, color: '#ef4444' }}>{err}</div>
+      )}
+
+      {tool.diff && (
+        <pre style={{ margin: 0, padding: '9px 11px', fontSize: 11, lineHeight: 1.55,
+          overflowX: 'auto', background: 'var(--color-surface)',
+          borderTop: '1px solid var(--color-border)', fontFamily: 'var(--font-mono)' }}>
+          {tool.diff.split('\n').map((line, i) => (
+            <div key={i} style={{
+              color: line.startsWith('+') && !line.startsWith('+++') ? '#10b981'
+                : line.startsWith('-') && !line.startsWith('---') ? '#ef4444'
+                : line.startsWith('@@') ? '#8b5cf6' : 'var(--color-muted)',
+            }}>{line || ' '}</div>
+          ))}
+        </pre>
+      )}
+
+      {pending && (
+        <div style={{ display: 'flex', gap: 7, padding: '9px 11px',
+          borderTop: '1px solid var(--color-border)' }}>
+          <button onClick={() => act('applied')} disabled={busy !== null}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5,
+              fontWeight: 600, padding: '5px 12px', borderRadius: 6, border: 'none',
+              cursor: busy ? 'wait' : 'pointer', background: '#10b981', color: '#fff' }}>
+            <Check size={12} /> Apply
+          </button>
+          <button onClick={() => act('discarded')} disabled={busy !== null}
+            style={{ fontSize: 11.5, fontWeight: 600, padding: '5px 12px', borderRadius: 6,
+              cursor: busy ? 'wait' : 'pointer', background: 'transparent',
+              color: 'var(--color-muted)', border: '1px solid var(--color-border)' }}>
+            Discard
+          </button>
+          {error && <span style={{ fontSize: 11, color: '#ef4444', alignSelf: 'center' }}>{error}</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  list_files: 'Listed files',
+  read_file: 'Read file',
+  write_file: 'Proposed a change',
+  get_diff: 'Read the working diff',
+}
+
 // ── Chat message renderer ─────────────────────────────────────────────────────
 function ChatMessage({ msg }: { msg: ChatMsg }) {
   const isUser = msg.role === 'user'
@@ -467,6 +583,9 @@ export default function DevChatbotPage() {
 
   // Chat state
   const [messages, setMessages] = useState<ChatMsg[]>([])
+  const [syncing, setSyncing] = useState(false)
+  const [syncState, setSyncState] = useState<{ ok: boolean; error: boolean; message: string }>(
+    { ok: false, error: false, message: '' })
   const [input, setInput] = useState('')
   const [isConnected, setIsConnected] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -659,6 +778,28 @@ export default function DevChatbotPage() {
             limitUSD: msg.limitUSD ?? 0,
             pct: msg.pct ?? 0,
           })
+        } else if (msg.type === 'tool_call') {
+          // Previously ignored: tool activity was completely invisible.
+          setMessages(prev => [...prev, {
+            role: 'tool', content: '',
+            tool: { name: msg.name, input: msg.input },
+          }])
+        } else if (msg.type === 'tool_result') {
+          const out = (msg.output ?? {}) as Record<string, unknown>
+          setMessages(prev => {
+            // Attach the result to the most recent unresolved call of the same tool.
+            const idx = [...prev].reverse().findIndex(
+              m => m.role === 'tool' && m.tool?.name === msg.name && !m.tool?.output)
+            if (idx === -1) return prev
+            const at = prev.length - 1 - idx
+            const next = [...prev]
+            next[at] = { ...next[at], tool: {
+              ...next[at].tool!, output: out,
+              stagedPath: out.staged ? String(out.path ?? '') : undefined,
+              diff: typeof out.diff === 'string' ? out.diff : undefined,
+            } }
+            return next
+          })
         } else if (msg.type === 'done') {
           setMessages(prev => {
             const last = prev[prev.length - 1]
@@ -772,6 +913,40 @@ export default function DevChatbotPage() {
     }])
     setPhase('chat')
   }, [query, startSession])
+
+  /**
+   * Clone (or fast-forward) the project's repo into the server workspace.
+   *
+   * react_orchestrator only attaches list_files/read_file/write_file/get_diff when
+   * a clone exists, and nothing used to call this endpoint — which is why the agent
+   * always ran tool-less and gave no indication why.
+   */
+  const handleSyncRepo = useCallback(async () => {
+    const pid = selectedProject?.id
+    if (!pid) return
+    setSyncing(true); setSyncState({ ok: false, error: false, message: '' })
+    try {
+      const { data: connectors } = await projectsApi.getConnectors(pid)
+      const repo = (connectors ?? []).find(
+        (c: { repoUrl?: string; localPath?: string }) => c.repoUrl || c.localPath)
+      const raw = repo?.repoUrl || repo?.localPath
+      if (!raw) throw new Error('This project has no repository configured.')
+      // A local fixture path needs a file:// scheme for git to accept it.
+      const url = /^[a-z]+:\/\//i.test(raw) ? raw : `file://${raw}`
+      const res = await cloneRepo({ projectId: pid, repoUrl: url, branch: repo?.branch || 'main' })
+      setSyncState({ ok: true, error: false, message: res.message })
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Repository synced — I can now read this project's files.\n\n\`${res.clonedPath}\``,
+      }])
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setSyncState({ ok: false, error: true, message: msg })
+      setMessages(prev => [...prev, { role: 'assistant', content: `Could not sync the repo: ${msg}` }])
+    } finally {
+      setSyncing(false)
+    }
+  }, [selectedProject])
 
   const handleUseContext = useCallback(() => {
     const name = selectedProject?.name ?? ''
@@ -1366,6 +1541,29 @@ export default function DevChatbotPage() {
               }
             </button>
 
+            {/* Sync repo — clones the project into the server workspace, which is
+                what makes DevMate's file tools attach. Without a clone the agent
+                silently runs with no tools at all. */}
+            <button
+              onClick={handleSyncRepo}
+              disabled={syncing || !selectedProject?.id}
+              title={syncState.message || 'Clone or update this project\'s repo so the agent can read its files'}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5,
+                fontWeight: 600, padding: '5px 10px', borderRadius: 7,
+                cursor: syncing || !selectedProject?.id ? 'not-allowed' : 'pointer',
+                background: 'transparent',
+                color: syncState.ok ? '#10b981' : syncState.error ? '#ef4444' : 'var(--color-muted)',
+                border: `1px solid ${syncState.ok ? '#10b98155' : syncState.error ? '#ef444455' : 'var(--color-border)'}`,
+                opacity: !selectedProject?.id ? 0.5 : 1,
+              }}
+            >
+              {syncing
+                ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                : <GitBranch size={12} />}
+              {syncState.ok ? 'Repo synced' : 'Sync repo'}
+            </button>
+
             {/* Model selector */}
             <ModelSelector
               value={selectedModel}
@@ -1438,7 +1636,15 @@ export default function DevChatbotPage() {
 
         {/* Messages */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {messages.map((msg, i) => <ChatMessage key={i} msg={msg} />)}
+          {messages.map((msg, i) => (
+            msg.role === 'tool' && msg.tool ? (
+              <ToolCard key={i} tool={msg.tool} projectId={selectedProject?.id ?? ''}
+                onResolved={(_path, how) => setMessages(prev => prev.map(
+                  (m, j) => j === i && m.tool ? { ...m, tool: { ...m.tool, applied: how } } : m))} />
+            ) : (
+              <ChatMessage key={i} msg={msg} />
+            )
+          ))}
           <div ref={messagesEndRef} />
         </div>
 
