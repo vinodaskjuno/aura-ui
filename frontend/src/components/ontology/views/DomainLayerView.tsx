@@ -30,11 +30,24 @@ interface Props {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function bfsReachable(startId: string, links: OntologyLink[]): Set<string> {
+/**
+ * Org-wide containers. Traversal may *reach* them but must not continue
+ * *through* them: every Service and Project BELONGS_TO the same Organization, so
+ * an unrestricted walk escapes the project and returns the entire graph — 768 of
+ * 768 nodes on real data, which is why this view appeared to show everything.
+ */
+const HUB_TYPES = new Set(['organization', 'enterprise', 'businessunit'])
+
+function bfsReachable(
+  startId: string,
+  links: OntologyLink[],
+  hubIds: Set<string> = new Set(),
+): Set<string> {
   const visited = new Set<string>([startId])
   const queue = [startId]
   while (queue.length) {
     const cur = queue.shift()!
+    if (cur !== startId && hubIds.has(cur)) continue   // reached, not traversed
     for (const l of links) {
       const src = typeof l.source === 'string' ? l.source : (l.source as OntologyNode).id
       const tgt = typeof l.target === 'string' ? l.target : (l.target as OntologyNode).id
@@ -249,10 +262,15 @@ export default function DomainLayerView({ nodes, links, selectedNode, onNodeClic
     ?? nodes.find(n => (n.node_type || '').toLowerCase() === 'project')
     ?? null
 
+  const hubIds = useMemo(
+    () => new Set(nodes.filter(n => HUB_TYPES.has((n.node_type || '').toLowerCase())).map(n => n.id)),
+    [nodes],
+  )
+
   const reachableIds = useMemo(() => {
     if (!projectNode) return new Set<string>()
-    return bfsReachable(projectNode.id, links)
-  }, [projectNode, links])
+    return bfsReachable(projectNode.id, links, hubIds)
+  }, [projectNode, links, hubIds])
 
   const reachableNodes = useMemo(() =>
     nodes.filter(n => reachableIds.has(n.id) && n.id !== projectNode?.id),

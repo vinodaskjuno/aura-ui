@@ -1,6 +1,11 @@
 import client from './client'
 
 export type ConnectorType = 'git' | 'project_mgmt' | 'itsm' | 'security' | 'storage' | 'sql' | 'mcp' | 'api'
+  | 'observability' | 'incident' | 'notification'
+export type ObservabilityProvider = 'grafana_loki' | 'grafana_mimir' | 'grafana_tempo'
+  | 'datadog' | 'sentry' | 'elasticsearch' | 'kubernetes' | 'cloudwatch'
+export type IncidentProvider = 'pagerduty'
+export type NotificationProvider = 'slack' | 'telegram'
 export type GitProvider = 'github' | 'gitlab' | 'bitbucket' | 'azure_devops'
 export type ProjectMgmtProvider = 'jira' | 'rally' | 'azure_boards'
 export type ITSMProvider = 'servicenow'

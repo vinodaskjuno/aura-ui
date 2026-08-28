@@ -1,7 +1,7 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { OntologyNode, OntologyLink } from '../../api/ontologyUniverse'
 import type { GraphTheme } from '../../hooks/useGraphTheme'
-import dagre from '@dagrejs/dagre'
+import { layoutDag } from '../ontology/lenses/lensSelectors'
 
 export const WORKSPACE_GRAPH_NODE_CAP = 150
 
@@ -94,22 +94,25 @@ export function ontologyLinksToFlowEdges(
     })
 }
 
+const WORKSPACE_CARD = { w: 160, h: 56 }
+
+/**
+ * Delegates to the shared layoutDag so there is a single dagre call site.
+ * layoutDag already converts dagre's centre coordinates to the top-left
+ * positions React Flow expects.
+ */
 export function layoutWorkspaceGraph(
   rawNodes: Node[],
   rawEdges: Edge[],
 ): { nodes: Node[]; edges: Edge[] } {
   if (rawNodes.length === 0) return { nodes: [], edges: rawEdges }
-  const g = new dagre.graphlib.Graph()
-  g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: 'TB', ranksep: 70, nodesep: 50, marginx: 30, marginy: 30 })
-  rawNodes.forEach((n) => g.setNode(n.id, { width: 160, height: 56 }))
-  rawEdges.forEach((e) => g.setEdge(e.source, e.target))
-  dagre.layout(g)
+  const positions = layoutDag(
+    rawNodes.map((n) => ({ id: n.id, width: WORKSPACE_CARD.w, height: WORKSPACE_CARD.h })),
+    rawEdges.map((e) => ({ source: e.source, target: e.target })),
+    { rankdir: 'TB', ranksep: 70, nodesep: 50 },
+  )
   return {
-    nodes: rawNodes.map((n) => {
-      const pos = g.node(n.id)
-      return { ...n, position: { x: (pos?.x ?? 0) - 80, y: (pos?.y ?? 0) - 28 } }
-    }),
+    nodes: rawNodes.map((n) => ({ ...n, position: positions.get(n.id) ?? { x: 0, y: 0 } })),
     edges: rawEdges,
   }
 }

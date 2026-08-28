@@ -1,10 +1,19 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import type { OntologyNode, OntologyLink, ViewMode } from '../types/ontology'
-import { useOntologyStore, type SpecialistView } from '../store/ontologyStore'
+import type { OntologyNode, OntologyLink } from '../types/ontology'
+import { useOntologyStore } from '../store/ontologyStore'
 import { useAuthStore } from '../store/authStore'
-import OntologyGraph, { type OntologyGraphRef } from '../components/ontology/OntologyGraph'
-import OntologyGraphContainer from '../components/ontology/OntologyGraphContainer'
+import LensViewHost from '../components/ontology/lenses/LensViewHost'
+import { useLensState } from '../components/ontology/lenses/useLensState'
+import {
+  applyLensFilters, buildLensContext, nodeTypeFilterSet, resolveFilterGroups,
+  type ActiveFilters,
+} from '../components/ontology/lenses/lensSelectors'
+import LensLegend from '../components/ontology/lenses/LensLegend'
+import LensKpiBar, { KPI_BAR_HEIGHT } from '../components/ontology/lenses/LensKpiBar'
+import LensDetailSections from '../components/ontology/lenses/LensDetailSections'
+import { checkLensDrift } from '../components/ontology/lenses/lensDriftCheck'
+import type { LensViewRef } from '../components/ontology/lenses/lensTypes'
 import OntologyTopBar from '../components/ontology/OntologyTopBar'
 import OntologyFilters from '../components/ontology/OntologyFilters'
 import OntologyZoomControls from '../components/ontology/OntologyZoomControls'
@@ -12,7 +21,6 @@ import OntologyBreadcrumb from '../components/ontology/OntologyBreadcrumb'
 import OntologyDetailPanel from '../components/ontology/OntologyDetailPanel'
 import RelationshipDetailPanel from '../components/ontology/RelationshipDetailPanel'
 import { useGraphTheme } from '../hooks/useGraphTheme'
-import OntologyLegend from '../components/ontology/OntologyLegend'
 import StarsBackground from '../components/ontology/StarsBackground'
 import WelcomeOverlay from '../components/ontology/WelcomeOverlay'
 import NodeTooltip from '../components/ontology/NodeTooltip'
@@ -21,13 +29,17 @@ import TourGuide from '../components/ontology/TourGuide'
 
 export default function OntologyVisualizerPage() {
   const gt = useGraphTheme()
-  const graphRef = useRef<OntologyGraphRef>(null)
-  const [searchParams] = useSearchParams()
+  const graphRef = useRef<LensViewRef>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
   const projectParam = searchParams.get('project')
+  const nodeParam = searchParams.get('node')
+
+  // Axis 1 = lens (which slice), axis 2 = layout (how it is drawn). Both live
+  // in the URL so a view survives reload and can be pasted into a ticket.
+  const { lens, layout, grouping, setLens, setLayout, setGrouping, openLayout } = useLensState()
 
   const { nodes: storeNodes, links: storeLinks, isLoading, error, projectFocus,
-    loadOrgGraph, loadProjectSubgraph, specialistView, setSpecialistView,
-    focusedProjectNode } = useOntologyStore()
+    loadOrgGraph, loadProjectSubgraph, focusedProjectNode } = useOntologyStore()
   const { hasPermission } = useAuthStore()
   const canMaintain = hasPermission('ontology_maintain')
 
@@ -35,8 +47,19 @@ export default function OntologyVisualizerPage() {
   const allNodes = storeNodes as unknown as OntologyNode[]
   const allLinks = storeLinks as unknown as OntologyLink[]
 
+  // Indexed once per (graph, lens); consumed by KPIs, cards and traversal.
+  const ctx = useMemo(
+    () => buildLensContext(lens, storeNodes, storeLinks),
+    [lens, storeNodes, storeLinks],
+  )
+
+  const filterGroups = useMemo(() => resolveFilterGroups(lens, ctx), [lens, ctx])
+
+  // Chrome sits below the topbar, and below the KPI strip when that is shown.
+  const chromeTop = 80 + (layout.chrome.kpiBar ? KPI_BAR_HEIGHT : 0)
+
+
   // View state
-  const [currentView, setCurrentView] = useState<ViewMode>('full')
   const [isPresentationMode, setIsPresentationMode] = useState(false)
   const [showMaintainerChat, setShowMaintainerChat] = useState(false)
   const [showTourGuide, setShowTourGuide] = useState(false)
@@ -51,8 +74,23 @@ export default function OntologyVisualizerPage() {
   const [selectedLink, setSelectedLink] = useState<OntologyLink | null>(null)
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
 
-  // Filter state
-  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set())
+  // Filter state — keyed by filter-group id, so a lens can filter on several
+  // dimensions at once (type × language × owner, or env × region × provider).
+  const [activeFilters, setActiveFilters] = useState<ActiveFilters>({})
+
+  // Non-type filters are applied here; type filters pass through to the canvas,
+  // which matches them itself and keys its group-hub synthesis on "none active".
+  // .filter() preserves node object identity, which force-graph's simulation
+  // depends on.
+  const visibleNodes = useMemo(
+    () => applyLensFilters(ctx, activeFilters, filterGroups),
+    [ctx, activeFilters, filterGroups],
+  )
+  const typeFilters = useMemo(
+    () => nodeTypeFilterSet(activeFilters, filterGroups),
+    [activeFilters, filterGroups],
+  )
+
   const [searchTerm, setSearchTerm] = useState('')
 
   // Highlight state — set from OntologyMaintainerChat when user clicks "Highlight in graph"
@@ -64,6 +102,10 @@ export default function OntologyVisualizerPage() {
   const [mouseY, setMouseY] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
+  // Dev-only: warn if the frontend registry has drifted from the server's
+  // lens definitions. No-op in production.
+  useEffect(() => { void checkLensDrift() }, [])
+
   // Load on mount — respect ?project= query param
   useEffect(() => {
     if (projectParam) {
@@ -72,6 +114,41 @@ export default function OntologyVisualizerPage() {
       loadOrgGraph()
     }
   }, [projectParam])
+
+  // Deep link: ?node= selects a node once the graph is present. Matched against
+  // elementId, externalId and label because callers paste whichever they have.
+  const restoredNode = useRef<string | null>(null)
+  useEffect(() => {
+    if (!nodeParam || !allNodes.length || restoredNode.current === nodeParam) return
+    const match = allNodes.find(n =>
+      n.id === nodeParam
+      || (n as unknown as Record<string, unknown>).externalId === nodeParam
+      || n.label === nodeParam)
+    if (match) {
+      restoredNode.current = nodeParam
+      setSelectedNode(match)
+      graphRef.current?.zoomToFit(600, 80)
+    }
+  }, [nodeParam, allNodes])
+
+  // Mirror the selection back into the URL, replacing so selections do not
+  // accumulate in history.
+  useEffect(() => {
+    const current = searchParams.get('node')
+    const want = selectedNode
+      ? String((selectedNode as unknown as Record<string, unknown>).externalId ?? selectedNode.id)
+      : null
+    if (current === want) return
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      if (want) next.set('node', want)
+      else next.delete('node')
+      return next
+    }, { replace: true })
+    restoredNode.current = want
+    // searchParams is a dependency: the effect writes it, then re-runs and
+    // early-returns on the `current === want` guard, so it settles immediately.
+  }, [selectedNode, searchParams, setSearchParams])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -85,7 +162,7 @@ export default function OntologyVisualizerPage() {
       } else if (e.code === 'Escape') {
         if (selectedLink) { setSelectedLink(null); return }
         if (selectedNode) setSelectedNode(null)
-        else if (currentView === 'hierarchy' && hierarchyLevel > 0) {
+        else if (layout.id === 'hierarchy' && hierarchyLevel > 0) {
           setHierarchyLevel(hierarchyLevel - 1)
           setHierarchyPath(hierarchyPath.slice(0, -1))
         }
@@ -99,7 +176,7 @@ export default function OntologyVisualizerPage() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedNode, selectedLink, currentView, hierarchyLevel, hierarchyPath, isPresentationMode])
+  }, [selectedNode, selectedLink, layout.id, hierarchyLevel, hierarchyPath, isPresentationMode])
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => { setMouseX(e.clientX); setMouseY(e.clientY) }
@@ -107,14 +184,37 @@ export default function OntologyVisualizerPage() {
     return () => window.removeEventListener('mousemove', handleMouseMove)
   }, [])
 
-  const handleViewChange = (view: ViewMode) => {
-    setCurrentView(view)
+  const handleLayoutChange = (id: typeof layout.id) => {
+    const target = lens.layouts.find(l => l.id === id)
+    setLayout(id)
+    if (target?.slot === 'view') {
+      // Entering a specialist view only drops the selection, preserving search
+      // and filters — matching the previous onSpecialistViewChange behaviour.
+      setSelectedNode(null)
+      return
+    }
+    // Returning to a canvas layout is the old handleViewChange: a full reset.
     setSearchTerm('')
-    setActiveFilters(new Set())
+    setActiveFilters({})
     setSelectedNode(null)
     setSelectedLink(null)
     setExpandedNodes(new Set())
-    if (view === 'hierarchy') { setHierarchyLevel(0); setHierarchyPath([]) }
+    setHierarchyLevel(0)
+    setHierarchyPath([])
+  }
+
+  // Filters and selections from one lens are meaningless in another, so a lens
+  // switch clears them along with any highlight.
+  const handleLensChange = (id: typeof lens.id) => {
+    setLens(id)
+    setSearchTerm('')
+    setActiveFilters({})
+    setSelectedNode(null)
+    setSelectedLink(null)
+    setExpandedNodes(new Set())
+    setHierarchyLevel(0)
+    setHierarchyPath([])
+    setHighlightedNodeIds(new Set())
   }
 
   const handleNodeClick = (node: OntologyNode | null) => {
@@ -127,11 +227,13 @@ export default function OntologyVisualizerPage() {
     setSelectedNode(null)
   }
 
-  const handleFilterToggle = (filter: string) => {
-    const newFilters = new Set(activeFilters)
-    if (newFilters.has(filter)) newFilters.delete(filter)
-    else newFilters.add(filter)
-    setActiveFilters(newFilters)
+  const handleFilterToggle = (groupId: string, optionId: string) => {
+    setActiveFilters(prev => {
+      const next = new Set(prev[groupId] ?? [])
+      if (next.has(optionId)) next.delete(optionId)
+      else next.add(optionId)
+      return { ...prev, [groupId]: next }
+    })
   }
 
   const handleTraverseFromProject = (node: OntologyNode) => {
@@ -151,7 +253,7 @@ export default function OntologyVisualizerPage() {
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[var(--color-primary)] border-t-transparent" />
           <p className="mt-4 text-[var(--color-subtext)]">
-            {projectFocus ? `Loading ontology for "${projectFocus}"...` : 'Loading Enterprise Ontology Universe...'}
+            {projectFocus ? `Loading ontology for "${projectFocus}"...` : 'Loading Onto Verse…'}
           </p>
         </div>
       </div>
@@ -162,7 +264,7 @@ export default function OntologyVisualizerPage() {
     return (
       <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 48px)' }}>
         <div className="text-center max-w-md">
-          <p className="text-red-500 text-lg mb-2">Ontology Unavailable</p>
+          <p className="text-red-500 text-lg mb-2">Onto Verse Unavailable</p>
           <p className="text-[var(--color-subtext)] text-sm">{error}</p>
           <p className="text-[var(--color-muted)] text-xs mt-3">
             Start Neo4j and set <code>NEO4J_ENABLED=true</code> in your .env, then load data via the Connectors page.
@@ -194,27 +296,37 @@ export default function OntologyVisualizerPage() {
       <StarsBackground />
 
       <OntologyTopBar
-        currentView={currentView}
-        onViewChange={handleViewChange}
+        lens={lens}
+        layout={layout}
+        onLensChange={handleLensChange}
+        onLayoutChange={handleLayoutChange}
+        onToggleOff={() => setLayout(lens.layouts[0].id)}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
         isPresentationMode={isPresentationMode}
         searchInputRef={searchInputRef as any}
-        totalNodes={allNodes.length}
-        totalLinks={allLinks.length}
         projectFocus={projectFocus}
         canMaintain={canMaintain}
         onMaintainerChatToggle={() => setShowMaintainerChat(v => !v)}
         maintainerChatOpen={showMaintainerChat}
         onRefreshOrgGraph={() => { loadOrgGraph(); setSelectedNode(null) }}
         onClearProjectFocus={() => { useOntologyStore.getState().clearProjectFocus(); setSelectedNode(null) }}
-        specialistView={specialistView}
-        onSpecialistViewChange={(v: SpecialistView | null) => { setSpecialistView(v); if (v) setSelectedNode(null) }}
         onTourGuideToggle={() => setShowTourGuide(v => !v)}
         tourGuideActive={showTourGuide}
       />
 
-      {currentView === 'hierarchy' && hierarchyLevel > 0 && (
+      {layout.chrome.kpiBar && (
+        <LensKpiBar
+          lens={lens}
+          ctx={ctx}
+          isPresentationMode={isPresentationMode}
+          grouping={grouping}
+          onGroupingChange={setGrouping}
+          showGrouping={layout.id === 'grouped-lanes'}
+        />
+      )}
+
+      {layout.chrome.breadcrumb && layout.id === 'hierarchy' && hierarchyLevel > 0 && (
         <OntologyBreadcrumb
           path={hierarchyPath}
           level={hierarchyLevel}
@@ -226,63 +338,67 @@ export default function OntologyVisualizerPage() {
         />
       )}
 
-      {!specialistView && (
+      {layout.chrome.filterRail && (
         <OntologyFilters
+          groups={filterGroups}
           activeFilters={activeFilters}
           onFilterToggle={handleFilterToggle}
+          onClearAll={() => setActiveFilters({})}
           isPresentationMode={isPresentationMode}
-          allNodes={allNodes}
+          accent={lens.accent}
+          topOffset={chromeTop}
         />
       )}
 
-      {/* Specialist views overlay — shown instead of OntologyGraph when active */}
-      {specialistView ? (
-        <OntologyGraphContainer
-          view={specialistView}
-          nodes={allNodes}
-          links={allLinks}
-          selectedNode={selectedNode}
-          onNodeClick={handleNodeClick}
-          onBack={() => setSpecialistView(null)}
-        />
-      ) : (
-        <OntologyGraph
-          ref={graphRef as any}
-          allNodes={allNodes}
-          allLinks={allLinks}
-          currentView={currentView}
-          hierarchyLevel={hierarchyLevel}
-          hierarchyPath={hierarchyPath}
-          activeFilters={activeFilters}
-          searchTerm={searchTerm}
-          selectedNode={selectedNode}
-          hoveredNode={hoveredNode}
-          expandedNodes={expandedNodes}
-          selectedLink={selectedLink}
-          onNodeClick={handleNodeClick}
-          onNodeHover={setHoveredNode}
-          onExpandToggle={(nodeId) => {
-            const newExpanded = new Set(expandedNodes)
-            if (newExpanded.has(nodeId)) newExpanded.delete(nodeId)
-            else newExpanded.add(nodeId)
-            setExpandedNodes(newExpanded)
-          }}
-          onHierarchyChange={(level, path) => { setHierarchyLevel(level); setHierarchyPath(path) }}
-          onLinkClick={handleLinkClick}
-          onLinkHover={() => {}}
-          highlightedNodeIds={highlightedNodeIds}
-        />
-      )}
+      <LensViewHost
+        ref={graphRef}
+        lens={lens}
+        layout={layout}
+        grouping={grouping}
+        ctx={ctx}
+        nodes={visibleNodes}
+        links={storeLinks}
+        activeFilters={typeFilters}
+        searchTerm={searchTerm}
+        selectedNode={selectedNode as never}
+        selectedLink={selectedLink as never}
+        hoveredNode={hoveredNode as never}
+        highlightedNodeIds={highlightedNodeIds}
+        isPresentationMode={isPresentationMode}
+        canvasState={{
+          hierarchyLevel,
+          hierarchyPath,
+          expandedNodes,
+          onHierarchyChange: (level, path) => { setHierarchyLevel(level); setHierarchyPath(path) },
+          onExpandToggle: (nodeId) => {
+            const next = new Set(expandedNodes)
+            if (next.has(nodeId)) next.delete(nodeId)
+            else next.add(nodeId)
+            setExpandedNodes(next)
+          },
+        }}
+        onNodeClick={handleNodeClick as never}
+        onNodeHover={setHoveredNode as never}
+        onLinkClick={handleLinkClick as never}
+        onLinkHover={() => {}}
+        onBack={() => setLayout(lens.layouts[0].id)}
+      />
 
-      {!specialistView && (
+      {layout.chrome.zoomControls && (
         <OntologyZoomControls
-          graphRef={graphRef}
+          graphRef={graphRef as never}
           isPresentationMode={isPresentationMode}
           onPresentationToggle={() => setIsPresentationMode(!isPresentationMode)}
         />
       )}
-      {!specialistView && (
-        <OntologyLegend isPresentationMode={isPresentationMode} />
+      {layout.chrome.legend && (
+        <LensLegend
+          lens={lens}
+          layout={layout}
+          ctx={ctx}
+          isPresentationMode={isPresentationMode}
+          topOffset={chromeTop}
+        />
       )}
 
       <OntologyDetailPanel
@@ -291,6 +407,21 @@ export default function OntologyVisualizerPage() {
         allLinks={allLinks}
         onClose={() => setSelectedNode(null)}
         onTraverseProject={handleTraverseFromProject}
+        onOpenLayout={(id) => {
+          // May switch lens, so drop filters scoped to the previous one.
+          openLayout(id)
+          setActiveFilters({})
+          setSelectedNode(null)
+        }}
+        lensSections={selectedNode && (
+          <LensDetailSections
+            node={selectedNode as never}
+            lens={lens}
+            ctx={ctx}
+            onFocusNodes={(ids) => setHighlightedNodeIds(new Set(ids))}
+            onSelectNode={(n) => setSelectedNode(n as never)}
+          />
+        )}
       />
 
       <RelationshipDetailPanel
@@ -322,7 +453,7 @@ export default function OntologyVisualizerPage() {
       {highlightedNodeIds.size > 0 && (
         <div style={{
           position: 'absolute',
-          top: '66px',
+          top: `${chromeTop - 14}px`,
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 40,

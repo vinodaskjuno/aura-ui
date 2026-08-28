@@ -154,7 +154,7 @@ export default function WorkspaceGraphPanel({
               border: `1px solid ${t.panelBorder}`, borderRadius: 8,
               color: t.panelSubtext, fontSize: 13,
             }}>
-              No ontology data loaded. Click Reload or go to Ontology Visualizer first.
+              No ontology data loaded. Click Reload or go to Onto Verse first.
             </div>
           </Panel>
         )}

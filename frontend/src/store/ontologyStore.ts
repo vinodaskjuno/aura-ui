@@ -7,8 +7,6 @@ interface OntologyFilters {
   sources: string[]
 }
 
-export type SpecialistView = 'smartscape' | 'domain-layer' | 'structural' | 'workspace'
-
 interface OntologyState {
   nodes: OntologyNode[]
   links: OntologyLink[]
@@ -17,15 +15,19 @@ interface OntologyState {
   error: string | null
   filters: OntologyFilters
   projectFocus: string | null
-  specialistView: SpecialistView | null
   focusedProjectNode: OntologyNode | null
+
+  // ── Lens state — a read-only mirror of the URL. ────────────────────────────
+  // useLensState() is the single writer; never set these directly.
+  lens: string
+  layout: string
+  grouping: string | null
 
   loadOrgGraph: (filters?: OntologyFilters) => Promise<void>
   loadProjectSubgraph: (projectName: string) => Promise<void>
   setFilters: (filters: OntologyFilters) => void
   clearProjectFocus: () => void
   searchNodes: (q: string, type?: string) => Promise<SearchResult[]>
-  setSpecialistView: (view: SpecialistView | null) => void
   setFocusedProjectNode: (node: OntologyNode | null) => void
   reset: () => void
 }
@@ -38,8 +40,10 @@ export const useOntologyStore = create<OntologyState>((set, get) => ({
   error: null,
   filters: { types: [], sources: [] },
   projectFocus: null,
-  specialistView: null,
   focusedProjectNode: null,
+  lens: 'ontology',
+  layout: 'force',
+  grouping: null,
 
   loadOrgGraph: async (filters) => {
     const activeFilters = filters ?? get().filters
@@ -90,15 +94,11 @@ export const useOntologyStore = create<OntologyState>((set, get) => ({
     return apiSearch(q, type)
   },
 
-  setSpecialistView: (view) => {
-    set({ specialistView: view })
-  },
-
   setFocusedProjectNode: (node) => {
     set({ focusedProjectNode: node })
   },
 
   reset: () => {
-    set({ nodes: [], links: [], isLoading: false, lastLoaded: null, error: null, projectFocus: null, specialistView: null, focusedProjectNode: null })
+    set({ nodes: [], links: [], isLoading: false, lastLoaded: null, error: null, projectFocus: null, focusedProjectNode: null })
   },
 }))

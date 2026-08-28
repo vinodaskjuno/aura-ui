@@ -25,6 +25,12 @@ interface Props {
   allLinks: OntologyLink[]
   onClose: () => void
   onTraverseProject?: (node: OntologyNode) => void
+  /** Open one of the ontology lens's detail-only layouts (Domain / Structural). */
+  onOpenLayout?: (layoutId: 'domain-layer' | 'structural') => void
+
+  /** Lens-specific sections rendered above the generic properties. */
+  lensSections?: React.ReactNode
+
 }
 
 type DetailTab = 'info' | 'provenance' | 'history'
@@ -237,11 +243,11 @@ function ProvenanceTab({ node, outgoing, incoming, allNodes, nodeVersion, loadin
   )
 }
 
-export default function OntologyDetailPanel({ node, allNodes, allLinks, onClose, onTraverseProject }: Props) {
+export default function OntologyDetailPanel({ node, allNodes, allLinks, onClose, onTraverseProject, onOpenLayout, lensSections }: Props) {
   const gt = useGraphTheme()
   const { hasPermission } = useAuthStore()
   const canMaintain = hasPermission('ontology_maintain')
-  const { setSpecialistView, setFocusedProjectNode } = useOntologyStore()
+  const { setFocusedProjectNode } = useOntologyStore()
   const [activeTab, setActiveTab] = useState<DetailTab>('info')
   const [changelog, setChangelog] = useState<ChangelogEntry[]>([])
   const [changelogLoading, setChangelogLoading] = useState(false)
@@ -465,11 +471,12 @@ export default function OntologyDetailPanel({ node, allNodes, allLinks, onClose,
 
       {/* Details tab */}
       {activeTab === 'info' && <>
+      {lensSections}
       {/* Domain View + Structural View buttons for project nodes */}
       {isProjectNode && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
           <button
-            onClick={() => { setFocusedProjectNode(node as any); setSpecialistView('domain-layer') }}
+            onClick={() => { setFocusedProjectNode(node as any); onOpenLayout?.('domain-layer') }}
             style={{
               padding: '10px 8px',
               background: 'rgba(16,185,129,0.08)',
@@ -486,7 +493,7 @@ export default function OntologyDetailPanel({ node, allNodes, allLinks, onClose,
             Domain View
           </button>
           <button
-            onClick={() => { setFocusedProjectNode(node as any); setSpecialistView('structural') }}
+            onClick={() => { setFocusedProjectNode(node as any); onOpenLayout?.('structural') }}
             style={{
               padding: '10px 8px',
               background: 'rgba(167,139,250,0.08)',

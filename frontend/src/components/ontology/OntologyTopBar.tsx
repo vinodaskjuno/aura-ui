@@ -1,45 +1,27 @@
 import { type RefObject } from 'react'
-import { RefreshCw, MessageSquareCode, Search, Play, ChevronRight, Cpu, Network, LayoutDashboard, GitBranch } from 'lucide-react'
-import type { ViewMode } from '../../types/ontology'
-import type { SpecialistView } from '../../store/ontologyStore'
-import { useGraphTheme } from '../../hooks/useGraphTheme'
+import { RefreshCw, MessageSquareCode, Search, Play, ChevronRight } from 'lucide-react'
+import LensLayoutTabs from '../ontology/lenses/LensLayoutTabs'
+import LensSwitcher from '../ontology/lenses/LensSwitcher'
+import type { LayoutId, LensDefinition, LensId, LensLayoutOption } from './lenses/lensTypes'
 
 interface Props {
-  currentView: ViewMode
-  onViewChange: (view: ViewMode) => void
+  lens: LensDefinition
+  layout: LensLayoutOption
+  onLensChange: (id: LensId) => void
+  onLayoutChange: (id: LayoutId) => void
+  onToggleOff: () => void
   searchTerm: string
   onSearchChange: (term: string) => void
   isPresentationMode: boolean
   searchInputRef?: RefObject<HTMLInputElement>
-  totalNodes?: number
-  totalLinks?: number
   projectFocus?: string | null
   canMaintain?: boolean
   onMaintainerChatToggle?: () => void
   maintainerChatOpen?: boolean
   onRefreshOrgGraph?: () => void
   onClearProjectFocus?: () => void
-  specialistView?: SpecialistView | null
-  onSpecialistViewChange?: (view: SpecialistView | null) => void
   onTourGuideToggle?: () => void
   tourGuideActive?: boolean
-}
-
-const VIEW_TABS: { id: ViewMode; label: string; Icon: any }[] = [
-  { id: 'full',      label: 'Graph',      Icon: Network },
-  { id: 'hierarchy', label: 'Hierarchy',  Icon: GitBranch },
-]
-
-const SPECIALIST_OPTIONS: { id: SpecialistView; label: string; Icon: any }[] = [
-  { id: 'smartscape', label: 'Smartscape',  Icon: Cpu },
-  { id: 'workspace',  label: 'Workspace',   Icon: LayoutDashboard },
-]
-
-// Specialist views accessible only from the detail panel (domain-layer, structural)
-const DETAIL_VIEWS: SpecialistView[] = ['domain-layer', 'structural']
-const DETAIL_VIEW_LABELS: Record<string, string> = {
-  'domain-layer': 'Domain View',
-  'structural':   'Structural View',
 }
 
 function Divider() {
@@ -47,28 +29,14 @@ function Divider() {
 }
 
 export default function OntologyTopBar({
-  currentView, onViewChange, searchTerm, onSearchChange, searchInputRef,
-  totalNodes, totalLinks, projectFocus, canMaintain,
+  lens, layout, onLensChange, onLayoutChange, onToggleOff,
+  searchTerm, onSearchChange, searchInputRef,
+  projectFocus, canMaintain,
   onMaintainerChatToggle, maintainerChatOpen, onRefreshOrgGraph, onClearProjectFocus,
-  specialistView, onSpecialistViewChange, onTourGuideToggle, tourGuideActive,
+  onTourGuideToggle, tourGuideActive,
 }: Props) {
-  const gt = useGraphTheme()
-
-  const isDetailView = specialistView ? DETAIL_VIEWS.includes(specialistView) : false
-  const showTourGuide = isDetailView && !!onTourGuideToggle
-
-  // Common button base styles
-  const btn = (active: boolean, accentColor = '#a78bfa'): React.CSSProperties => ({
-    display: 'flex', alignItems: 'center', gap: 5,
-    padding: '5px 10px', height: 30,
-    background: active ? `${accentColor}18` : 'transparent',
-    border: active ? `1px solid ${accentColor}44` : '1px solid transparent',
-    borderRadius: 7,
-    color: active ? accentColor : 'rgba(148,163,184,0.7)',
-    fontSize: 11, fontWeight: active ? 700 : 500,
-    cursor: 'pointer', transition: 'all 0.18s',
-    whiteSpace: 'nowrap' as const, flexShrink: 0,
-  })
+  const isDetailView = !!layout.detailOnly
+  const showTourGuide = layout.chrome.tourGuide && !!onTourGuideToggle
 
   return (
     <div
@@ -103,71 +71,31 @@ export default function OntologyTopBar({
         }}>
           {projectFocus ? (
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ WebkitTextFillColor: 'rgba(148,163,184,0.55)', background: 'none', fontSize: 10 }}>Ontology</span>
+              <span style={{ WebkitTextFillColor: 'rgba(148,163,184,0.55)', background: 'none', fontSize: 10 }}>Onto Verse</span>
               <ChevronRight size={9} style={{ color: 'rgba(148,163,184,0.4)', WebkitTextFillColor: 'initial' }} />
               <span>{projectFocus}</span>
             </span>
-          ) : 'Ontology Universe'}
+          ) : 'Onto Verse'}
         </div>
-        {isDetailView && specialistView && (
+        {isDetailView && (
           <div style={{
             fontSize: 8, color: '#6366f1', textTransform: 'uppercase',
             letterSpacing: '1.5px', fontWeight: 600, marginTop: 1,
           }}>
-            ◈ {DETAIL_VIEW_LABELS[specialistView]}
+            ◈ {layout.label}
           </div>
         )}
         {!isDetailView && (
           <div style={{
-            fontSize: 8, color: 'rgba(99,102,241,0.7)', textTransform: 'uppercase',
+            fontSize: 8, color: `${lens.accent}b3`, textTransform: 'uppercase',
             letterSpacing: '1.5px', fontWeight: 600, marginTop: 1,
           }}>
-            {projectFocus ? '◈ Project Subgraph' : '◈ Org View'}
+            {lens.id === 'ontology'
+              ? (projectFocus ? '◈ Project Subgraph' : '◈ Org View')
+              : `◈ ${lens.label} Lens · ${projectFocus ? 'Project Subgraph' : 'Org View'}`}
           </div>
         )}
       </div>
-
-      {/* ── Stats ── */}
-      {totalNodes !== undefined && totalLinks !== undefined && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          {/* Nodes */}
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            padding: '4px 12px',
-            background: 'rgba(96,165,250,0.07)',
-            border: '1px solid rgba(96,165,250,0.2)',
-            borderRadius: 8,
-          }}>
-            <span style={{
-              fontSize: 18, fontWeight: 800, lineHeight: 1,
-              background: 'linear-gradient(135deg, #60a5fa, #a78bfa)',
-              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-            }}>{totalNodes.toLocaleString()}</span>
-            <span style={{
-              fontSize: 8, fontWeight: 700, textTransform: 'uppercase',
-              letterSpacing: '1.2px', color: '#6366f1', marginTop: 1,
-            }}>Nodes</span>
-          </div>
-          {/* Links */}
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            padding: '4px 12px',
-            background: 'rgba(52,211,153,0.07)',
-            border: '1px solid rgba(52,211,153,0.2)',
-            borderRadius: 8,
-          }}>
-            <span style={{
-              fontSize: 18, fontWeight: 800, lineHeight: 1,
-              background: 'linear-gradient(135deg, #34d399, #06b6d4)',
-              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-            }}>{totalLinks.toLocaleString()}</span>
-            <span style={{
-              fontSize: 8, fontWeight: 700, textTransform: 'uppercase',
-              letterSpacing: '1.2px', color: '#0891b2', marginTop: 1,
-            }}>Links</span>
-          </div>
-        </div>
-      )}
 
       {/* ── Spacer ── */}
       <div style={{ flex: 1 }} />
@@ -209,94 +137,19 @@ export default function OntologyTopBar({
 
       <Divider />
 
-      {/* ── View mode tabs ── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 2,
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.07)',
-        borderRadius: 8, padding: '3px',
-      }}>
-        {VIEW_TABS.map(({ id, label, Icon }) => {
-          const active = currentView === id && !specialistView
-          return (
-            <button
-              key={id}
-              onClick={() => { onViewChange(id); onSpecialistViewChange?.(null) }}
-              style={btn(active, '#60a5fa')}
-              onMouseEnter={e => {
-                if (!active) {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-                  e.currentTarget.style.color = '#e2e8f0'
-                }
-              }}
-              onMouseLeave={e => {
-                if (!active) {
-                  e.currentTarget.style.background = 'transparent'
-                  e.currentTarget.style.color = 'rgba(148,163,184,0.7)'
-                }
-              }}
-            >
-              <Icon size={12} strokeWidth={2} />
-              {label}
-            </button>
-          )
-        })}
-      </div>
+      {/* ── Group 1: how the active lens is drawn ── */}
+      <LensLayoutTabs lens={lens} layout={layout} onChange={onLayoutChange} />
 
       <Divider />
 
-      {/* ── Specialist views ── */}
-      {onSpecialistViewChange && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 2,
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.07)',
-          borderRadius: 8, padding: '3px',
-        }}>
-          {SPECIALIST_OPTIONS.map(({ id, label, Icon }) => {
-            const active = specialistView === id
-            return (
-              <button
-                key={id}
-                onClick={() => onSpecialistViewChange(active ? null : id)}
-                title={`${label} — AI-powered topology map`}
-                style={btn(active, '#a78bfa')}
-                onMouseEnter={e => {
-                  if (!active) {
-                    e.currentTarget.style.background = 'rgba(167,139,250,0.1)'
-                    e.currentTarget.style.color = '#c4b5fd'
-                  }
-                }}
-                onMouseLeave={e => {
-                  if (!active) {
-                    e.currentTarget.style.background = 'transparent'
-                    e.currentTarget.style.color = 'rgba(148,163,184,0.7)'
-                  }
-                }}
-              >
-                <Icon size={12} strokeWidth={2} />
-                {label}
-              </button>
-            )
-          })}
-
-          {/* Detail-view back indicator when domain/structural is active */}
-          {isDetailView && specialistView && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '4px 10px',
-              background: 'rgba(99,102,241,0.12)',
-              border: '1px solid rgba(99,102,241,0.3)',
-              borderRadius: 6,
-              fontSize: 10, fontWeight: 700, color: '#818cf8',
-              whiteSpace: 'nowrap',
-            }}>
-              <LayoutDashboard size={11} strokeWidth={2} />
-              {DETAIL_VIEW_LABELS[specialistView]}
-            </div>
-          )}
-        </div>
-      )}
+      {/* ── Group 2: specialist views + other lenses ── */}
+      <LensSwitcher
+        lens={lens}
+        layout={layout}
+        onLensChange={onLensChange}
+        onLayoutChange={onLayoutChange}
+        onToggleOff={onToggleOff}
+      />
 
       <Divider />
 

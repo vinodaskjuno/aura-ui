@@ -3,7 +3,7 @@ import {
   Plus, X, Trash2, RefreshCw, CheckCircle2, XCircle, Clock,
   GitBranch, GitFork, Plug2, Database, Cloud, ShieldCheck,
   Ticket, Server, Search, ChevronDown, Link2, Eye, EyeOff,
-  Wifi, WifiOff, FolderGit2, AlertTriangle, Layers,
+  Wifi, WifiOff, FolderGit2, AlertTriangle, Layers, Radar, Siren, Send,
 } from 'lucide-react'
 import {
   getConnectors, createConnector, updateConnector, deleteConnector, testConnector,
@@ -243,6 +243,138 @@ const CONNECTOR_TYPE_DEFS: ConnectorTypeDef[] = [
         fields: [
           { key: 'baseUrl', label: 'Endpoint URL', type: 'url', placeholder: 'http://localhost:3000/sse', required: true },
           { key: 'token', label: 'Auth Token (optional)', type: 'password', placeholder: 'Bearer token', required: false },
+        ],
+      },
+    ],
+  },
+  // ── Observability / SRE agents ────────────────────────────────────────────
+  // Deliberately configured HERE rather than in a settings tab on the
+  // Observability page: a second credential form would mean a second secret
+  // store, a second test path, and two places to revoke a leaked Datadog key.
+  {
+    key: 'observability',
+    label: 'Observability',
+    description: 'Logs, metrics and traces for SRE agent investigations',
+    icon: <Radar size={18} />,
+    color: '#8b5cf6',
+    providers: [
+      {
+        key: 'grafana_loki',
+        label: 'Grafana Loki (logs)',
+        fields: [
+          { key: 'base_url', label: 'Loki URL', type: 'url', placeholder: 'https://loki.example.com', required: true },
+          { key: 'api_token', label: 'API Token', type: 'password', placeholder: 'glsa_...', required: false },
+          { key: 'org_id', label: 'Org ID (X-Scope-OrgID)', type: 'text', placeholder: 'tenant-1', required: false },
+          { key: 'grafana_url', label: 'Grafana URL (for deep links)', type: 'url', placeholder: 'https://grafana.example.com', required: false },
+          { key: 'service_label', label: 'Service label', type: 'text', placeholder: 'service_name', required: false },
+        ],
+      },
+      {
+        key: 'grafana_mimir',
+        label: 'Grafana Mimir / Prometheus (metrics)',
+        fields: [
+          { key: 'base_url', label: 'Mimir URL', type: 'url', placeholder: 'https://mimir.example.com', required: true },
+          { key: 'api_token', label: 'API Token', type: 'password', required: false },
+          { key: 'org_id', label: 'Org ID', type: 'text', required: false },
+          { key: 'grafana_url', label: 'Grafana URL (for deep links)', type: 'url', required: false },
+        ],
+      },
+      {
+        key: 'grafana_tempo',
+        label: 'Grafana Tempo (traces)',
+        fields: [
+          { key: 'base_url', label: 'Tempo URL', type: 'url', placeholder: 'https://tempo.example.com', required: true },
+          { key: 'api_token', label: 'API Token', type: 'password', required: false },
+          { key: 'grafana_url', label: 'Grafana URL (for deep links)', type: 'url', required: false },
+        ],
+      },
+      {
+        key: 'datadog',
+        label: 'Datadog',
+        fields: [
+          { key: 'site', label: 'Site', type: 'select', required: true, options: [
+            { value: 'datadoghq.com', label: 'US1 (datadoghq.com)' },
+            { value: 'us3.datadoghq.com', label: 'US3' },
+            { value: 'us5.datadoghq.com', label: 'US5' },
+            { value: 'datadoghq.eu', label: 'EU' },
+            { value: 'ap1.datadoghq.com', label: 'AP1' },
+          ] },
+          { key: 'api_key', label: 'API Key', type: 'password', required: true },
+          { key: 'app_key', label: 'Application Key', type: 'password', required: true },
+        ],
+      },
+      {
+        key: 'sentry',
+        label: 'Sentry',
+        fields: [
+          { key: 'base_url', label: 'Sentry URL', type: 'url', placeholder: 'https://sentry.io', required: false },
+          { key: 'auth_token', label: 'Auth Token', type: 'password', required: true },
+          { key: 'org', label: 'Organisation slug', type: 'text', required: true },
+          { key: 'project', label: 'Project slug', type: 'text', required: false },
+        ],
+      },
+      {
+        key: 'elasticsearch',
+        label: 'Elasticsearch / OpenSearch',
+        fields: [
+          { key: 'base_url', label: 'Cluster URL', type: 'url', placeholder: 'https://es.example.com:9200', required: true },
+          { key: 'api_key', label: 'API Key', type: 'password', required: false },
+          { key: 'username', label: 'Username', type: 'text', required: false },
+          { key: 'password', label: 'Password', type: 'password', required: false },
+          { key: 'index_pattern', label: 'Index pattern', type: 'text', placeholder: 'logs-*', required: false },
+        ],
+      },
+      {
+        key: 'kubernetes',
+        label: 'Kubernetes',
+        fields: [
+          { key: 'api_server', label: 'API Server', type: 'url', placeholder: 'https://k8s.example.com:6443', required: false },
+          { key: 'token', label: 'Service Account Token', type: 'password', required: false },
+          { key: 'ca_cert', label: 'CA Certificate', type: 'text', required: false },
+          { key: 'namespace', label: 'Namespace (blank = all)', type: 'text', required: false },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'incident',
+    label: 'Incident Management',
+    description: 'Pull live incidents and resolution notes',
+    icon: <Siren size={18} />,
+    color: '#ef4444',
+    providers: [
+      {
+        key: 'pagerduty',
+        label: 'PagerDuty',
+        fields: [
+          { key: 'api_token', label: 'API Token', type: 'password', required: true },
+          { key: 'service_ids', label: 'Service IDs (comma separated)', type: 'text', required: false },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'notification',
+    label: 'Notifications',
+    description: 'Deliver incident and budget alerts',
+    icon: <Send size={18} />,
+    color: '#10b981',
+    providers: [
+      {
+        key: 'slack',
+        label: 'Slack',
+        fields: [
+          { key: 'bot_token', label: 'Bot Token', type: 'password', placeholder: 'xoxb-...', required: false },
+          { key: 'channel_id', label: 'Channel ID', type: 'text', placeholder: 'C01234567', required: false },
+          { key: 'webhook_url', label: 'Incoming Webhook URL (alternative)', type: 'url', required: false },
+        ],
+      },
+      {
+        key: 'telegram',
+        label: 'Telegram',
+        fields: [
+          { key: 'bot_token', label: 'Bot Token', type: 'password', placeholder: '123456:ABC-DEF...', required: true },
+          { key: 'chat_id', label: 'Chat ID', type: 'text', placeholder: '-1001234567890', required: true },
         ],
       },
     ],

@@ -16,8 +16,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // Dedicated WS rule for ontology maintainer chat — must be BEFORE /api
+      // Dedicated WS rules — these MUST come before the generic '/api' rule, which
+      // is an http proxy and does not perform the Upgrade handshake.
       '/api/ontology/ws': { target: 'ws://localhost:8000', changeOrigin: true, ws: true },
+      '/api/observability/ws': { target: 'ws://localhost:8000', changeOrigin: true, ws: true },
 
       // Pure API prefixes — no React Router collision
       '/api':      { target: 'http://localhost:8000', changeOrigin: true },

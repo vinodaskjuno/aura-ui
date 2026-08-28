@@ -1,107 +1,62 @@
 import { useState } from 'react'
-import { ChevronDown } from 'lucide-react'
-import type { OntologyNode } from '../../types/ontology'
+import { ChevronDown, X } from 'lucide-react'
 import { useGraphTheme } from '../../hooks/useGraphTheme'
+import type { ActiveFilters, ResolvedFilterGroup } from './lenses/lensSelectors'
+
+const EMPTY: ReadonlySet<string> = new Set()
 
 interface Props {
-  activeFilters: Set<string>
-  onFilterToggle: (filter: string) => void
+  /** Derived from the active lens + the data — see resolveFilterGroups(). */
+  groups: ResolvedFilterGroup[]
+  activeFilters: ActiveFilters
+  onFilterToggle: (groupId: string, optionId: string) => void
+  onClearAll: () => void
   isPresentationMode: boolean
-  allNodes?: OntologyNode[]
+  accent?: string
+  /** Distance from the top of the canvas — shifts when the KPI bar is shown. */
+  topOffset?: number
 }
 
-const NODE_TYPES = [
-  { group: 'Data Sources', types: [
-    { id: 'source:git',         label: 'Git',           color: '#f0564a' },
-    { id: 'source:servicenow',  label: 'ServiceNow',    color: '#4fc3f7' },
-    { id: 'source:wiz',         label: 'Wiz',           color: '#ff9800' },
-    { id: 'source:mock',        label: 'Mock',          color: '#ab47bc' },
-  ]},
-  { group: 'Enterprise Entities', types: [
-    { id: 'Project',        label: 'Projects',        color: '#4a9eff' },
-    { id: 'Service',        label: 'Services',        color: '#10b981' },
-    { id: 'Repository',     label: 'Repositories',    color: '#f0564a' },
-    { id: 'Infrastructure', label: 'Infrastructure',  color: '#ffc107' },
-    { id: 'Database',       label: 'Databases',       color: '#9c27b0' },
-    { id: 'Team',           label: 'Teams',           color: '#00bcd4' },
-  ]},
-  { group: 'Risk & Operations', types: [
-    { id: 'SecurityFinding', label: 'Security Findings', color: '#f44336' },
-    { id: 'Incident',        label: 'Incidents',          color: '#ff6b6b' },
-  ]},
-  { group: 'Cloud & Compute', types: [
-    { id: 'cloud_provider', label: 'Cloud Providers', color: '#4285f4' },
-    { id: 'container',      label: 'Containers',      color: '#10b981' },
-    { id: 'location',       label: 'Locations',       color: '#8bc34a' },
-  ]},
-  { group: 'AI & Intelligence', types: [
-    { id: 'ai_service', label: 'AI Services', color: '#ff6b9d' },
-  ]},
-  { group: 'Applications & Services', types: [
-    { id: 'api_service',      label: 'API Services',      color: '#ffc107' },
-    { id: 'application',      label: 'Applications',      color: '#00bcd4' },
-    { id: 'network_service',  label: 'Network Services',  color: '#009688' },
-  ]},
-  { group: 'Data & Storage', types: [
-    { id: 'database_host',   label: 'Database Hosts',   color: '#9c27b0' },
-    { id: 'database_object', label: 'Database Objects', color: '#673ab7' },
-  ]},
-  { group: 'Security & Compliance', types: [
-    { id: 'security', label: 'Security', color: '#f44336' },
-  ]},
-  { group: 'Legacy & Batch', types: [
-    { id: 'legacy_process', label: 'Legacy Processes', color: '#795548' },
-    { id: 'batch_process',  label: 'Batch Processes',  color: '#607d8b' },
-  ]},
-  { group: 'Infrastructure', types: [
-    { id: 'domain',    label: 'Domains',     color: '#3f51b5' },
-    { id: 'category',  label: 'Categories',  color: '#5a7aaa' },
-    { id: 'component', label: 'Components',  color: '#6a7aaa' },
-  ]},
-]
-
-export default function OntologyFilters({ activeFilters, onFilterToggle, isPresentationMode, allNodes = [] }: Props) {
+export default function OntologyFilters({
+  groups, activeFilters, onFilterToggle, onClearAll, isPresentationMode,
+  topOffset = 80,
+}: Props) {
   const gt = useGraphTheme()
   const [filterSearch, setFilterSearch] = useState('')
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    new Set(NODE_TYPES.map(g => g.group))
-  )
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
-  const toggleGroup = (group: string) => {
-    const s = new Set(collapsedGroups)
-    s.has(group) ? s.delete(group) : s.add(group)
-    setCollapsedGroups(s)
+  const toggleGroup = (id: string) => {
+    const s = new Set(expanded)
+    if (s.has(id)) s.delete(id)
+    else s.add(id)
+    setExpanded(s)
   }
 
-  const typeCounts = new Map<string, number>()
-  allNodes.forEach(node => {
-    typeCounts.set(node.node_type, (typeCounts.get(node.node_type) || 0) + 1)
-    if (node.source) {
-      const k = `source:${node.source}`
-      typeCounts.set(k, (typeCounts.get(k) || 0) + 1)
-    }
-  })
+  const term = filterSearch.toLowerCase()
+  const filteredGroups = groups
+    .map(g => ({
+      ...g,
+      options: term
+        ? g.options.filter(o =>
+            o.label.toLowerCase().includes(term) || o.id.toLowerCase().includes(term))
+        : g.options,
+    }))
+    .filter(g => g.options.length > 0)
 
-  const filteredGroups = NODE_TYPES.map(g => ({
-    ...g,
-    types: g.types.filter(t =>
-      t.label.toLowerCase().includes(filterSearch.toLowerCase()) ||
-      t.id.toLowerCase().includes(filterSearch.toLowerCase())
-    ),
-  })).filter(g => g.types.length > 0)
+  const activeCount = Object.values(activeFilters).reduce((n, s) => n + s.size, 0)
 
   return (
     <div
       className={`absolute z-10 transition-opacity ${isPresentationMode ? 'opacity-30' : 'opacity-100'}`}
       style={{
-        top: '80px', left: '24px',
+        top: `${topOffset}px`, left: '24px',
         background: gt.filterBg,
         backdropFilter: 'blur(20px)',
         border: `1px solid ${gt.filterBorder}`,
         borderRadius: '12px',
         padding: '12px',
         width: '240px',
-        maxHeight: 'calc(100vh - 120px)',
+        maxHeight: `calc(100vh - ${topOffset + 40}px)`,
         overflowY: 'auto',
         boxShadow: gt.isDark
           ? '0 8px 24px rgba(0,0,0,0.4)'
@@ -120,7 +75,27 @@ export default function OntologyFilters({ activeFilters, onFilterToggle, isPrese
       <div style={{
         fontSize: '9px', fontWeight: 700, textTransform: 'uppercase',
         letterSpacing: '1.2px', color: gt.sectionLabel, marginBottom: '6px',
-      }}>Filters</div>
+        display: 'flex', alignItems: 'center', gap: 6,
+      }}>
+        <span>Filters</span>
+        {activeCount > 0 && (
+          <button
+            onClick={onClearAll}
+            title="Clear all filters"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 3,
+              marginLeft: 'auto', padding: '2px 6px',
+              background: gt.accentBg, border: `1px solid ${gt.accentBorder}`,
+              borderRadius: 4, color: gt.accent,
+              fontSize: 8, fontWeight: 700, cursor: 'pointer',
+              textTransform: 'uppercase', letterSpacing: '0.6px',
+            }}
+          >
+            <X size={9} strokeWidth={3} />
+            Clear {activeCount}
+          </button>
+        )}
+      </div>
 
       <input
         type="text"
@@ -146,14 +121,21 @@ export default function OntologyFilters({ activeFilters, onFilterToggle, isPrese
       />
 
       <div className="ov-filter-scroll">
-        {filteredGroups.map(({ group, types }) => {
-          const isCollapsed = collapsedGroups.has(group)
-          const groupCount = types.reduce((s, t) => s + (typeCounts.get(t.id) || 0), 0)
+        {filteredGroups.map(group => {
+          const { id: groupId, label, options } = group
+          // A search, or a live selection, forces the group open so the user can
+          // always see what they have chosen.
+          const selected = activeFilters[groupId] ?? EMPTY
+          // Open when the user opened it, when a search is narrowing the list,
+          // or when it holds a live selection — never hide an active filter.
+          const isCollapsed =
+            !expanded.has(groupId) && !term && !selected.size && (group.defaultCollapsed ?? false)
+          const groupCount = options.reduce((s, o) => s + o.count, 0)
 
           return (
-            <div key={group} style={{ marginBottom: '8px' }}>
+            <div key={groupId} style={{ marginBottom: '8px' }}>
               <div
-                onClick={() => toggleGroup(group)}
+                onClick={() => toggleGroup(groupId)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '6px',
                   padding: '4px 2px', marginBottom: '4px',
@@ -174,7 +156,7 @@ export default function OntologyFilters({ activeFilters, onFilterToggle, isPrese
                   flex: 1, fontSize: '9px', fontWeight: 700,
                   textTransform: 'uppercase', letterSpacing: '1px',
                   color: gt.panelSubtext,
-                }}>{group}</div>
+                }}>{label}</div>
                 <div style={{ fontSize: '8px', color: gt.mutedText, fontWeight: 600 }}>
                   {groupCount}
                 </div>
@@ -182,13 +164,13 @@ export default function OntologyFilters({ activeFilters, onFilterToggle, isPrese
 
               {!isCollapsed && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  {types.map(type => {
-                    const count = typeCounts.get(type.id) || 0
-                    const active = activeFilters.has(type.id)
+                  {options.map(type => {
+                    const count = type.count
+                    const active = selected.has(type.id)
                     return (
                       <button
                         key={type.id}
-                        onClick={() => onFilterToggle(type.id)}
+                        onClick={() => onFilterToggle(groupId, type.id)}
                         style={{
                           display: 'flex', alignItems: 'center', gap: '6px',
                           width: '100%', padding: '4px 6px', borderRadius: '4px',
@@ -205,8 +187,8 @@ export default function OntologyFilters({ activeFilters, onFilterToggle, isPrese
                       >
                         <span style={{
                           width: '8px', height: '8px', borderRadius: '50%',
-                          backgroundColor: type.color,
-                          boxShadow: gt.isDark ? `0 0 6px ${type.color}` : 'none',
+                          backgroundColor: type.color ?? gt.mutedText,
+                          boxShadow: gt.isDark && type.color ? `0 0 6px ${type.color}` : 'none',
                           flexShrink: 0,
                         }} />
                         <span style={{ flex: 1, fontSize: '10px', color: gt.panelText, textAlign: 'left', opacity: 0.85 }}>

@@ -2,43 +2,22 @@ import { useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useGraphTheme } from '../../hooks/useGraphTheme'
 
+export interface LegendNodeEntry { label: string; color: string; glow?: string; count?: number }
+export interface LegendEdgeEntry { label: string; color: string }
+
 interface Props {
   isPresentationMode: boolean
+  /** Derived from the active lens + the data — see LensLegend. */
+  nodeEntries: LegendNodeEntry[]
+  edgeEntries: LegendEdgeEntry[]
+  hints?: string[]
+  /** Distance from the top of the canvas — shifts when the KPI bar is shown. */
+  topOffset?: number
 }
 
-const NODE_TYPES = [
-  { label: 'Organizations',     color: '#60a5fa', glow: '#60a5fa' },
-  { label: 'Projects',          color: '#f59e0b', glow: '#fbbf24' },
-  { label: 'Services',          color: '#10b981', glow: '#34d399' },
-  { label: 'Repositories',      color: '#a78bfa', glow: '#c4b5fd' },
-  { label: 'Infrastructure',    color: '#06b6d4', glow: '#22d3ee' },
-  { label: 'Databases',         color: '#9c27b0', glow: '#ba68c8' },
-  { label: 'Teams',             color: '#ec4899', glow: '#f472b6' },
-  { label: 'Security Findings', color: '#ef4444', glow: '#f87171' },
-  { label: 'Incidents',         color: '#f97316', glow: '#fb923c' },
-  { label: 'Cloud Providers',   color: '#4285f4', glow: '#6ea6ff' },
-  { label: 'Containers',        color: '#10b981', glow: '#34d399' },
-  { label: 'AI Services',       color: '#ff6b9d', glow: '#ff8fb5' },
-  { label: 'API Services',      color: '#ffc107', glow: '#ffd54f' },
-  { label: 'Applications',      color: '#00bcd4', glow: '#4dd0e1' },
-  { label: 'Network Services',  color: '#009688', glow: '#4db6ac' },
-  { label: 'Batch Processes',   color: '#607d8b', glow: '#90a4ae' },
-  { label: 'Domains',           color: '#3f51b5', glow: '#7986cb' },
-]
-
-const REL_TYPES = [
-  { label: 'BELONGS_TO',      color: '#60a5fa' },
-  { label: 'RUNS_ON',         color: '#34d399' },
-  { label: 'DEPENDS_ON',      color: '#f59e0b' },
-  { label: 'HAS_FINDING',     color: '#ef4444' },
-  { label: 'HAS_INCIDENT',    color: '#f97316' },
-  { label: 'MANAGED_BY',      color: '#ec4899' },
-  { label: 'HOSTED_IN',       color: '#a78bfa' },
-  { label: 'IS_SAME_AS',      color: '#22d3ee' },
-  { label: 'CORRELATES_WITH', color: '#818cf8' },
-]
-
-export default function OntologyLegend({ isPresentationMode }: Props) {
+export default function OntologyLegend({
+  isPresentationMode, nodeEntries, edgeEntries, hints = [], topOffset = 80,
+}: Props) {
   const gt = useGraphTheme()
   const [collapsed, setCollapsed] = useState(false)
 
@@ -46,7 +25,7 @@ export default function OntologyLegend({ isPresentationMode }: Props) {
     return (
       <div
         className={`absolute z-10 transition-opacity ${isPresentationMode ? 'opacity-20 hover:opacity-80' : 'opacity-100'}`}
-        style={{ top: '80px', right: '24px' }}
+        style={{ top: `${topOffset}px`, right: '24px' }}
       >
         <button
           onClick={() => setCollapsed(false)}
@@ -77,7 +56,7 @@ export default function OntologyLegend({ isPresentationMode }: Props) {
     <div
       className={`absolute z-10 transition-opacity ${isPresentationMode ? 'opacity-20 hover:opacity-80' : 'opacity-100'}`}
       style={{
-        top: '80px', right: '24px',
+        top: `${topOffset}px`, right: '24px',
         background: gt.legendBg,
         backdropFilter: 'blur(24px)',
         border: `1px solid ${gt.legendBorder}`,
@@ -119,16 +98,24 @@ export default function OntologyLegend({ isPresentationMode }: Props) {
       }}>Node Types</div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '16px' }}>
-        {NODE_TYPES.map((t, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+        {nodeEntries.map(t => (
+          <div key={t.label} style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
             <span style={{
               width: '9px', height: '9px', borderRadius: '50%', flexShrink: 0,
               background: `radial-gradient(circle at 35% 35%, #fff, ${t.color})`,
-              boxShadow: gt.isDark ? `0 0 8px ${t.glow}, 0 0 2px ${t.glow}` : `0 0 4px ${t.glow}60`,
+              boxShadow: gt.isDark
+                ? `0 0 8px ${t.glow ?? t.color}, 0 0 2px ${t.glow ?? t.color}`
+                : `0 0 4px ${t.glow ?? t.color}60`,
             }} />
-            <span style={{ fontSize: '10px', color: gt.panelText, lineHeight: 1.2, opacity: 0.85 }}>
+            <span style={{ flex: 1, fontSize: '10px', color: gt.panelText, lineHeight: 1.2, opacity: 0.85 }}>
               {t.label}
             </span>
+            {t.count !== undefined && (
+              <span style={{
+                fontSize: '9px', color: gt.panelSubtext, fontWeight: 600,
+                fontFamily: '"Courier New", monospace',
+              }}>{t.count}</span>
+            )}
           </div>
         ))}
       </div>
@@ -142,8 +129,8 @@ export default function OntologyLegend({ isPresentationMode }: Props) {
       }}>Relationships</div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-        {REL_TYPES.map((r, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+        {edgeEntries.map(r => (
+          <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
               <div style={{ width: '14px', height: '1.5px', background: r.color, opacity: 0.8 }} />
               <div style={{
@@ -161,16 +148,16 @@ export default function OntologyLegend({ isPresentationMode }: Props) {
         ))}
       </div>
 
-      <div style={{
-        marginTop: '14px', padding: '8px', borderRadius: '8px',
-        background: gt.accentBg,
-        border: `1px solid ${gt.accentBorder}`,
-        fontSize: '9px', color: gt.accent, lineHeight: 1.6,
-      }}>
-        ✦ Click node to inspect<br />
-        ✦ Space → fit to screen<br />
-        ✦ Drag node to pin
-      </div>
+      {hints.length > 0 && (
+        <div style={{
+          marginTop: '14px', padding: '8px', borderRadius: '8px',
+          background: gt.accentBg,
+          border: `1px solid ${gt.accentBorder}`,
+          fontSize: '9px', color: gt.accent, lineHeight: 1.6,
+        }}>
+          {hints.map((h, i) => <div key={i}>{h}</div>)}
+        </div>
+      )}
     </div>
   )
 }

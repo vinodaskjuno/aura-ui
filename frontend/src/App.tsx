@@ -10,6 +10,7 @@ import SettingsPage from './pages/SettingsPage'
 import UploadPage from './pages/UploadPage'
 import LogsPage from './pages/LogsPage'
 import AIOpsPage from './pages/AIOpsPage'
+import ObservabilityPage from './pages/ObservabilityPage'
 import OntologyVisualizerPage from './pages/OntologyVisualizerPage'
 import QAWorkspacePage from './pages/QAWorkspacePage'
 import UserManagementPage from './pages/settings/UserManagementPage'
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="/dashboard"      element={<RoleProtectedRoute permission="dashboard"><DashboardPage /></RoleProtectedRoute>} />
           <Route path="/qa/*"           element={<RoleProtectedRoute permission="qa_workspace"><QAWorkspacePage /></RoleProtectedRoute>} />
           <Route path="/aiops"          element={<RoleProtectedRoute permission="aiops"><AIOpsPage /></RoleProtectedRoute>} />
+          <Route path="/observability"  element={<RoleProtectedRoute permission="observability"><ObservabilityPage /></RoleProtectedRoute>} />
           <Route path="/ontology"       element={<RoleProtectedRoute permission="ontology"><OntologyVisualizerPage /></RoleProtectedRoute>} />
           <Route path="/connectors"     element={<RoleProtectedRoute permission="connectors"><ConnectorsPage /></RoleProtectedRoute>} />
           <Route path="/advisor"        element={<RoleProtectedRoute permission="advisor"><AdvisorPage /></RoleProtectedRoute>} />

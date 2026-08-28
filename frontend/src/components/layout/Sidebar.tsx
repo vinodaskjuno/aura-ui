@@ -2,9 +2,9 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   LayoutDashboard, MessageSquare, Settings, Plug2,
-  LogOut, FolderUp, ScrollText, Activity, Cpu,
+  LogOut, FolderUp, ScrollText, Activity, Orbit,
   TestTube2, Users, ShieldCheck, BrainCircuit, CalendarClock, Bot, Database,
-  ScanSearch,
+  ScanSearch, Radar,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { LogoMark } from '../ui/Logo'
@@ -28,10 +28,11 @@ const ALL_NAV_GROUPS: NavGroup[] = [
     label: 'WORKSPACE',
     items: [
       { to: '/dashboard',            label: 'Dashboard',           icon: LayoutDashboard, permission: 'dashboard' },
-      { to: '/ontology',             label: 'Ontology Visualizer', icon: Cpu,             permission: 'ontology' },
+      { to: '/ontology',             label: 'Onto Verse',          icon: Orbit,           permission: 'ontology' },
       { to: '/dev-chat',             label: 'DevMate',             icon: Bot,             permission: 'dev_workspace' },
       { to: '/qa',                   label: 'QualityMind',         icon: TestTube2,       permission: 'qa_workspace' },
       { to: '/aiops',                label: 'AI Ops',              icon: Activity,        permission: 'aiops' },
+      { to: '/observability',        label: 'Observability',       icon: Radar,           permission: 'observability', badge: 'SRE' },
       { to: '/reverse-engineering',  label: 'Reverse Eng.',        icon: ScanSearch,      permission: 'dev_workspace' },
       { to: '/ontology/data-loader', label: 'Data Loader',         icon: Database,        permission: 'ontology_maintain' },
       { to: '/advisor',              label: 'AI Advisor',          icon: BrainCircuit,    permission: 'advisor' },

@@ -222,3 +222,61 @@ export const triggerSchedulerNow = async (jobId: string) => {
   const res = await client.post(`/api/ontology/schedule/run-now?job_id=${encodeURIComponent(jobId)}`)
   return res.data
 }
+
+// ── Lens catalog (B1) ─────────────────────────────────────────────────────────
+
+export interface LensCatalogEdge {
+  from: string[]
+  type: string
+  to: string[]
+  reverse: boolean
+  weight: number
+}
+
+export interface LensCatalogEntry {
+  id: string
+  name: string
+  description: string
+  accent: string
+  labels: string[]
+  edges: LensCatalogEdge[]
+  relationshipTypes: string[]
+  tiers: Record<string, number>
+  anchorLabels: string[]
+  kpis: { id: string; label: string; format: string; hint: string; secondary: boolean }[]
+}
+
+export interface LensCatalog {
+  nodeTiers: Record<string, number>
+  relationshipTypes: string[]
+  labels: string[]
+  lenses: LensCatalogEntry[]
+}
+
+/** Static server-side lens definitions. Works with Neo4j down. */
+export const getLensCatalog = async (): Promise<LensCatalog> => {
+  const res = await client.get('/api/ontology/lenses')
+  return res.data
+}
+
+export interface LensGraphMeta {
+  lensId: string
+  lensName: string
+  nodeCount: number
+  linkCount: number
+  orphanCount: number
+  truncated: boolean
+  limit: number
+  labels: string[]
+  tiers: Record<string, number>
+  available: boolean
+}
+
+/** Server-projected lens subgraph — the scale answer to client-side projection. */
+export const getLensGraph = async (
+  lensId: string,
+  params: { limit?: number; sources?: string; env?: string; drop_orphans?: boolean } = {},
+): Promise<OrgGraph & { meta: LensGraphMeta }> => {
+  const res = await client.get(`/api/ontology/lens/${lensId}`, { params })
+  return res.data
+}

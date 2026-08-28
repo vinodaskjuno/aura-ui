@@ -171,6 +171,10 @@ server {
         proxy_pass http://backend;
         include /etc/nginx/snippets/proxy-ws.conf;
     }
+    location ^~ /api/observability/ws {
+        proxy_pass http://backend;
+        include /etc/nginx/snippets/proxy-ws.conf;
+    }
 
     # ── Plain API prefixes ───────────────────────────────────────────────────
     # /ontology is deliberately absent: the backend serves /api/ontology, so

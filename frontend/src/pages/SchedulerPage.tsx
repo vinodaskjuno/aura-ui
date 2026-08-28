@@ -123,7 +123,7 @@ export default function SchedulerPage() {
           <div>
             <h1 style={{ fontSize: '22px', fontWeight: 800, color: 'var(--color-text)', margin: 0 }}>Ontology Scheduler</h1>
             <p style={{ fontSize: '13px', color: 'var(--color-subtext)', margin: '4px 0 0' }}>
-              Manage daily delta ingestion and correlation refresh jobs for the Enterprise Ontology Universe.
+              Manage daily delta ingestion and correlation refresh jobs for Onto Verse.
             </p>
           </div>
           <button

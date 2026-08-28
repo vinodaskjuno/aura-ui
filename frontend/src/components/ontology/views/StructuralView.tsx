@@ -33,6 +33,21 @@ interface Props {
   onBack: () => void
 }
 
+/** Org-wide containers — reached but never traversed through. */
+const HUB_TYPES = new Set(['organization', 'enterprise', 'businessunit'])
+
+/** Neighbours in either direction. */
+function getAdjacentIds(nodeId: string, links: OntologyLink[]): string[] {
+  const result: string[] = []
+  for (const l of links) {
+    const src = typeof l.source === 'string' ? l.source : (l.source as OntologyNode).id
+    const tgt = typeof l.target === 'string' ? l.target : (l.target as OntologyNode).id
+    if (src === nodeId) result.push(tgt)
+    else if (tgt === nodeId) result.push(src)
+  }
+  return result
+}
+
 function getOutgoingIds(nodeId: string, links: OntologyLink[]): string[] {
   const result: string[] = []
   for (const l of links) {
@@ -149,12 +164,40 @@ export default function StructuralView({ nodes, links, selectedNode, onNodeClick
     ?? nodes.find(n => (n.node_type || '').toLowerCase() === 'project')
     ?? null
 
+  /**
+   * Services belonging to the project.
+   *
+   * Outbound-only resolution returned nothing on real data: the graph stores
+   * `Repository -BELONGS_TO-> Project` and `Service -HOSTED_IN-> Repository`, so
+   * a project's services sit two hops *upstream*, not downstream. Walk both
+   * directions for two hops instead, stopping at org-wide hubs so the search
+   * cannot escape into the rest of the estate.
+   */
   const serviceNodes = useMemo(() => {
     if (!projectNode) return []
-    const ids = getOutgoingIds(projectNode.id, links)
-    return ids.map(id => nodes.find(n => n.id === id)).filter((n): n is OntologyNode =>
-      !!n && (n.node_type || '').toLowerCase() === 'service'
+    const hubIds = new Set(
+      nodes.filter(n => HUB_TYPES.has((n.node_type || '').toLowerCase())).map(n => n.id),
     )
+    const byId = new Map(nodes.map(n => [n.id, n]))
+    const seen = new Set<string>([projectNode.id])
+    let frontier = [projectNode.id]
+    const found: OntologyNode[] = []
+
+    for (let hop = 0; hop < 2 && frontier.length; hop++) {
+      const next: string[] = []
+      for (const cur of frontier) {
+        for (const id of getAdjacentIds(cur, links)) {
+          if (seen.has(id) || hubIds.has(id)) continue
+          seen.add(id)
+          const n = byId.get(id)
+          if (!n) continue
+          if ((n.node_type || '').toLowerCase() === 'service') found.push(n)
+          else next.push(id)
+        }
+      }
+      frontier = next
+    }
+    return found
   }, [projectNode, links, nodes])
 
   const serviceGroups = useMemo(() => {

@@ -4,7 +4,7 @@
  * when specialistView is null.
  */
 import React, { Suspense } from 'react'
-import type { SpecialistView } from '../../store/ontologyStore'
+import type { SpecialistView } from './lenses/lensTypes'
 import type { OntologyNode, OntologyLink } from '../../api/ontologyUniverse'
 import { useGraphTheme } from '../../hooks/useGraphTheme'
 
