@@ -200,9 +200,15 @@ server {
         proxy_pass http://backend;
         include /etc/nginx/snippets/proxy-api.conf;
         client_max_body_size 16m;
-        # Exports are one-shot POSTs, not streams — buffering them keeps the
+        # Exports are one-shot POSTs, not streams — buffering the REQUEST keeps the
         # backend from holding a connection open on a slow client.
-        proxy_buffering on;
+        #
+        # proxy_buffering (the RESPONSE direction) is deliberately not set here:
+        # proxy-api.conf above already sets it, and nginx rejects a duplicate
+        # directive in the same context outright — "proxy_buffering directive is
+        # duplicate" is a startup [emerg], so the container exits and the task
+        # crash-loops. Response buffering also buys nothing for OTLP, whose
+        # responses are a few bytes; proxy_request_buffering is the one that matters.
         proxy_request_buffering on;
     }
     location = /health {
