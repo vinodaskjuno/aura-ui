@@ -51,4 +51,8 @@ export const projectsApi = {
   getKnowledgeGraph: (id: string) => client.get<KnowledgeGraph>(`/api/projects/${id}/knowledge-graph`),
   getActivity: (id: string) => client.get<ActivityEntry[]>(`/api/projects/${id}/activity`),
   analyse: (id: string) => client.post(`/api/projects/${id}/analyse`),
+  // Adding a connector after creation is the only order that works for uploaded
+  // folders: the upload needs a projectId, so the project must exist first.
+  addConnector: (id: string, repo: Record<string, unknown>) =>
+    client.post(`/api/projects/${id}/connectors`, repo),
 }

@@ -100,3 +100,41 @@ export async function discardChange(projectId: string, path: string): Promise<{ 
   const res = await client.post('/api/git/pending/discard', { projectId, path })
   return res.data
 }
+
+export interface FolderUploadResult {
+  success: boolean
+  label: string
+  localPath: string
+  projectPath: string
+  fileCount: number
+  skippedCount: number
+  bytes: number
+  message: string
+}
+
+/**
+ * Upload a folder picked in the browser.
+ *
+ * A web page cannot learn a real filesystem path — `webkitdirectory` yields File
+ * objects carrying only a relative `webkitRelativePath`, and `value` is spoofed
+ * as `C:\fakepath\...`. So the files themselves are posted and the server rebuilds
+ * the tree under the project workspace. Filter before calling: an unfiltered
+ * node_modules is tens of thousands of files.
+ *
+ * `paths` and `files` are positional — the server zips them in order.
+ */
+export async function uploadFolder(payload: {
+  projectId: string
+  label: string
+  files: { path: string; file: File }[]
+}): Promise<FolderUploadResult> {
+  const form = new FormData()
+  form.append('projectId', payload.projectId)
+  form.append('label', payload.label)
+  for (const { path, file } of payload.files) {
+    form.append('paths', path)
+    form.append('files', file, file.name)
+  }
+  const res = await client.post('/api/git/upload-folder', form)
+  return res.data
+}

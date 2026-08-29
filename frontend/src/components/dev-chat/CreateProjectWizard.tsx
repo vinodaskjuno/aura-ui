@@ -8,6 +8,64 @@ import ProjectGraphModal from '../dev/ProjectGraphModal'
 import { useOntologyStore } from '../../store/ontologyStore'
 import { getChatSessions, type ChatSession } from '../../api/chatSessions'
 import { projectsApi } from '../../api/projects'
+import { uploadFolder } from '../../api/gitOps'
+
+/**
+ * A folder the user picked in the browser, already filtered.
+ *
+ * The browser never reveals a real filesystem path, so there is nothing to store
+ * but the files themselves — they are posted to /api/git/upload-folder and the
+ * server rebuilds the tree in the project workspace.
+ */
+interface PickedFolder {
+  id: string
+  label: string
+  files: { path: string; file: File }[]
+  bytes: number
+  skipped: number
+  status: 'ready' | 'uploading' | 'done' | 'error'
+  message?: string
+}
+
+// Mirrors _UPLOAD_SKIP_DIRS / _UPLOAD_SKIP_SUFFIXES in routers/git_ops.py. Filtering
+// here as well as server-side is what keeps a picked folder from being a 40,000-file
+// upload — the picker hands us node_modules whether we want it or not.
+const SKIP_DIRS = new Set([
+  'node_modules', '.git', '__pycache__', '.venv', 'venv', 'env',
+  'dist', 'build', '.next', '.nuxt', '.turbo', 'target', 'vendor',
+  '.mypy_cache', '.pytest_cache', '.ruff_cache', '.idea', '.vscode',
+  'coverage', '.gradle', 'bin', 'obj',
+])
+const SKIP_EXT = new Set([
+  '.pyc', '.pyo', '.so', '.dylib', '.dll', '.class', '.o', '.a',
+  '.exe', '.zip', '.tar', '.gz', '.jar', '.war', '.png', '.jpg',
+  '.jpeg', '.gif', '.ico', '.pdf', '.mp4', '.mov', '.woff', '.woff2',
+])
+
+const humanBytes = (n: number) =>
+  n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
+
+/** Split a picked FileList into the files worth uploading and a skip count. */
+function filterPicked(list: FileList): Omit<PickedFolder, 'id' | 'status'> {
+  const all = Array.from(list)
+  // webkitRelativePath is "<pickedFolder>/a/b.ts"; the first segment becomes the
+  // label, so it is stripped from every path to avoid backend/backend/a/b.ts.
+  const label = (all[0]?.webkitRelativePath ?? '').split('/')[0] || 'folder'
+  const files: { path: string; file: File }[] = []
+  let bytes = 0
+  let skipped = 0
+  for (const file of all) {
+    const rel = (file.webkitRelativePath || file.name).split('/').slice(1).join('/')
+    const parts = rel.split('/')
+    const name = parts[parts.length - 1] ?? ''
+    const dot = name.lastIndexOf('.')
+    const ext = dot > 0 ? name.slice(dot).toLowerCase() : ''
+    if (!rel || parts.some(seg => SKIP_DIRS.has(seg)) || SKIP_EXT.has(ext)) { skipped++; continue }
+    files.push({ path: rel, file })
+    bytes += file.size
+  }
+  return { label, files, bytes, skipped }
+}
 
 export interface WizardResult {
   projectName: string
@@ -72,7 +130,9 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
   const [repoToken, setRepoToken] = useState('')
   const [repoBranch, setRepoBranch] = useState(initialValues?.repoBranch ?? '')
   const [showToken, setShowToken] = useState(false)
-  const [localPath, setLocalPath] = useState(initialValues?.localPath ?? '')
+  const [localPath] = useState(initialValues?.localPath ?? '')
+  const [folders, setFolders] = useState<PickedFolder[]>([])
+  const folderInputRef = useRef<HTMLInputElement>(null)
 
   // Step 1: Knowledge Graph
   const [graphProjectName, setGraphProjectName] = useState(initialValues?.projectName ?? '')
@@ -169,6 +229,31 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
     }
   }, [])
 
+  const handlePickFolder = useCallback((list: FileList) => {
+    const picked = filterPicked(list)
+    if (picked.files.length === 0) {
+      window.alert(
+        `Nothing to upload from "${picked.label}" — all ${picked.skipped} entries are ` +
+        'dependency or build directories. Pick the source folder itself (e.g. backend/).')
+      return
+    }
+    setFolders(prev => {
+      // Two folders sharing a label would land in the same server directory and the
+      // second would silently replace the first, so make the label unique instead.
+      let label = picked.label
+      for (let n = 2; prev.some(f => f.label === label); n++) label = `${picked.label}-${n}`
+      const id = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID() : `${Date.now()}-${prev.length}`
+      return [...prev, { ...picked, label, id, status: 'ready' as const }]
+    })
+  }, [])
+
+  const renameFolder = useCallback((id: string, raw: string) => {
+    // Same sanitisation the server applies, so what you type is what you get.
+    const label = raw.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)
+    setFolders(list => list.map(f => (f.id === id ? { ...f, label } : f)))
+  }, [])
+
   const handleFinish = useCallback(async () => {
     if (!canFinish) return
     setSubmitting(true)
@@ -179,7 +264,11 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
         repos.push({ repoType: 'git-mcp', sourceType: 'mcp', repoUrl: mcpUrl.trim() })
       } else if (repoChoice === 'git-repo' && repoUrl.trim()) {
         repos.push({ repoType, sourceType: 'git', repoUrl: repoUrl.trim(), token: repoToken.trim() || undefined, branch: repoBranch.trim() || undefined })
-      } else if (repoChoice === 'local' && localPath.trim()) {
+      } else if (repoChoice === 'local' && folders.length === 0 && localPath.trim()) {
+        // Only when editing a project that already had a path. Newly picked folders
+        // become connectors after upload, below — the upload needs a projectId, so
+        // it cannot happen before the project exists.
+        //
         // `localPath` is the field code_analysis_agent reads; writing the path into
         // `repoUrl` meant local-folder projects always analysed as empty. Send both
         // so the edit path (which falls back to repoUrl) keeps working.
@@ -198,13 +287,43 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
         // best-effort — chat works without a backend project
       }
 
+      // Upload picked folders and register one connector each. Sequential, not
+      // parallel: these are large multipart bodies and the progress ticks per
+      // folder, which is the only feedback the user gets.
+      let uploadedRoot = ''
+      if (repoChoice === 'local' && folders.length > 0) {
+        if (!projectId) {
+          window.alert('Could not create the project, so the folders were not uploaded.')
+        } else {
+          for (const f of folders) {
+            setFolders(list => list.map(x => (x.id === f.id ? { ...x, status: 'uploading' } : x)))
+            try {
+              const res = await uploadFolder({ projectId, label: f.label, files: f.files })
+              uploadedRoot = res.projectPath
+              await projectsApi.addConnector(projectId, {
+                repoType: 'local', sourceType: 'local',
+                localPath: res.localPath, repoUrl: res.localPath,
+              })
+              setFolders(list => list.map(x => (
+                x.id === f.id ? { ...x, status: 'done', message: res.message } : x)))
+            } catch (err) {
+              const detail = (err as { response?: { data?: { detail?: string } } })
+                ?.response?.data?.detail ?? 'Upload failed'
+              setFolders(list => list.map(x => (
+                x.id === f.id ? { ...x, status: 'error', message: detail } : x)))
+              window.alert(`Folder "${f.label}" was not uploaded: ${detail}`)
+            }
+          }
+        }
+      }
+
       let repo: WizardResult['repo']
       if (repoChoice === 'git-mcp' && mcpUrl.trim()) {
         repo = { type: 'git-mcp', url: mcpUrl.trim() }
       } else if (repoChoice === 'git-repo' && repoUrl.trim()) {
         repo = { type: 'git-repo', url: repoUrl.trim(), token: repoToken.trim() || undefined, branch: repoBranch.trim() || undefined }
-      } else if (repoChoice === 'local' && localPath.trim()) {
-        repo = { type: 'local', url: localPath.trim() }
+      } else if (repoChoice === 'local' && (uploadedRoot || localPath.trim())) {
+        repo = { type: 'local', url: uploadedRoot || localPath.trim() }
       }
 
       onComplete({
@@ -220,7 +339,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
     }
   }, [
     canFinish, projectName, description, repoChoice, mcpUrl, repoUrl, repoType,
-    repoToken, repoBranch, localPath, useKnowledgeGraph, graphLoaded,
+    repoToken, repoBranch, localPath, folders, useKnowledgeGraph, graphLoaded,
     sessionChoice, selectedSessionId, onComplete,
   ])
 
@@ -359,14 +478,89 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
 
         {repoChoice === 'local' && (
           <div>
-            <label style={labelStyle}>Local Path</label>
+            <label style={labelStyle}>Local Folders</label>
             <input
-              value={localPath}
-              onChange={e => setLocalPath(e.target.value)}
-              placeholder="/path/to/project or C:\path\to\project"
-              style={inputStyle}
-              autoFocus
+              ref={folderInputRef}
+              type="file"
+              multiple
+              webkitdirectory=""
+              directory=""
+              style={{ display: 'none' }}
+              onChange={e => {
+                if (e.target.files?.length) handlePickFolder(e.target.files)
+                e.target.value = ''   // re-picking the same folder must fire onChange again
+              }}
             />
+
+            {folders.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                {folders.map(f => (
+                  <div key={f.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+                    background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                    borderRadius: 6, fontSize: 12,
+                  }}>
+                    <FolderOpen size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                    <input
+                      value={f.label}
+                      onChange={e => renameFolder(f.id, e.target.value)}
+                      disabled={f.status === 'uploading' || f.status === 'done'}
+                      style={{
+                        background: 'transparent', border: 'none', outline: 'none',
+                        color: 'var(--color-text)', fontWeight: 600, fontSize: 12,
+                        width: 110, padding: 0,
+                      }}
+                    />
+                    <span style={{ color: 'var(--color-subtext)', flex: 1 }}>
+                      {f.files.length} files · {humanBytes(f.bytes)}
+                      {f.skipped > 0 && ` · ${f.skipped} skipped`}
+                    </span>
+                    {f.status === 'uploading' && <Loader2 size={13} className="animate-spin" style={{ color: '#818cf8' }} />}
+                    {f.status === 'done' && <Check size={13} style={{ color: '#10b981' }} />}
+                    {f.status === 'error' && (
+                      <span title={f.message} style={{ color: '#ef4444', fontSize: 11 }}>failed</span>
+                    )}
+                    {f.status === 'ready' && (
+                      <button
+                        type="button"
+                        onClick={() => setFolders(list => list.filter(x => x.id !== f.id))}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted)', display: 'flex', padding: 0 }}
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => folderInputRef.current?.click()}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7, width: '100%',
+                justifyContent: 'center', padding: '10px 12px',
+                background: 'none', border: '1px dashed var(--color-border)',
+                borderRadius: 6, color: 'var(--color-subtext)', fontSize: 12,
+                cursor: 'pointer',
+              }}
+            >
+              <Plus size={14} />
+              {folders.length === 0 ? 'Browse for a folder…' : 'Add another folder'}
+            </button>
+
+            <div style={{ fontSize: 11, color: 'var(--color-muted)', marginTop: 7, lineHeight: 1.5 }}>
+              Add each part of the project separately — e.g. <strong>backend</strong> and{' '}
+              <strong>frontend</strong>. Dependency and build directories (node_modules,
+              dist, .venv) are skipped automatically. The folder is uploaded to the
+              server on Finish, since a browser cannot give the server a path on your machine.
+            </div>
+
+            {localPath && folders.length === 0 && (
+              <div style={{ fontSize: 11, color: 'var(--color-subtext)', marginTop: 7 }}>
+                Currently using <code>{localPath}</code> — add a folder above to replace it.
+              </div>
+            )}
           </div>
         )}
       </div>
