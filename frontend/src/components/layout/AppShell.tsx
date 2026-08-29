@@ -2,6 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Sidebar } from './Sidebar'
 import { SDLCProvider } from '../../context/SDLCContext'
+import RouteErrorBoundary from './RouteErrorBoundary'
 
 const pageVariants = {
   initial: { opacity: 0, y: 10 },
@@ -31,7 +32,9 @@ export function AppShell() {
                 transition={pageTransition}
                 style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
               >
-                <Outlet />
+                <RouteErrorBoundary routeKey={location.pathname}>
+                  <Outlet />
+                </RouteErrorBoundary>
               </motion.div>
             </AnimatePresence>
           </main>

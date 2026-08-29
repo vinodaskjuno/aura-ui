@@ -157,7 +157,7 @@ export default function LogsMonitor() {
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {/* Stats badges */}
-          {stats && Object.entries(stats.by_level).map(([level, count]) => (
+          {stats && Object.entries(stats.by_level ?? {}).map(([level, count]) => (
             <div key={level} style={{
               padding: '4px 10px',
               borderRadius: 6,

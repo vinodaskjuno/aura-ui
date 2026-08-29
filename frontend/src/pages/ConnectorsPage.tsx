@@ -820,7 +820,9 @@ export default function ConnectorsPage() {
   const fetchConnectors = () => {
     setLoading(true)
     getConnectors()
-      .then(res => setConnectors(res.data))
+      // Anything other than an array here makes the .filter below throw during
+      // render, which (before the route error boundary) blanked the entire SPA.
+      .then(res => setConnectors(Array.isArray(res.data) ? res.data : []))
       .catch(() => setConnectors([]))
       .finally(() => setLoading(false))
   }
