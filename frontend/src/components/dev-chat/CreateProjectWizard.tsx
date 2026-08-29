@@ -8,7 +8,7 @@ import ProjectGraphModal from '../dev/ProjectGraphModal'
 import { useOntologyStore } from '../../store/ontologyStore'
 import { getChatSessions, type ChatSession } from '../../api/chatSessions'
 import { projectsApi } from '../../api/projects'
-import { uploadFolder } from '../../api/gitOps'
+import { cloneRepo, uploadFolder } from '../../api/gitOps'
 
 /**
  * A folder the user picked in the browser, already filtered.
@@ -133,6 +133,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
   const [localPath] = useState(initialValues?.localPath ?? '')
   const [folders, setFolders] = useState<PickedFolder[]>([])
   const folderInputRef = useRef<HTMLInputElement>(null)
+  const [analysing, setAnalysing] = useState(false)
 
   // Step 1: Knowledge Graph
   const [graphProjectName, setGraphProjectName] = useState(initialValues?.projectName ?? '')
@@ -315,6 +316,32 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
             }
           }
         }
+      }
+
+      // A git project needs a server-side clone before anything can parse it —
+      // code analysis walks the filesystem, so a repo URL alone yields nothing.
+      let clonedOk = false
+      if (repoChoice === 'git-repo' && repoUrl.trim() && projectId) {
+        try {
+          await cloneRepo({
+            projectId, repoUrl: repoUrl.trim(),
+            branch: repoBranch.trim() || 'main', token: repoToken.trim() || undefined,
+          })
+          clonedOk = true
+        } catch (err) {
+          const detail = (err as { response?: { data?: { detail?: string } } })
+            ?.response?.data?.detail ?? 'Clone failed'
+          window.alert(`Could not clone the repository: ${detail}`)
+        }
+      }
+
+      // Kick off analysis, which is what writes the project into Neo4j. Deliberately
+      // not awaited: it runs three agents including LLM calls and can take a minute,
+      // and blocking the wizard on that would be worse than letting the graph fill
+      // in behind it.
+      if (projectId && (uploadedRoot || clonedOk)) {
+        setAnalysing(true)
+        projectsApi.analyse(projectId).catch(() => {})
       }
 
       let repo: WizardResult['repo']
@@ -967,6 +994,12 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                   </button>
                 </>
               ) : (
+                <>
+                {analysing && (
+                  <span style={{ fontSize: 11.5, color: 'var(--color-subtext)', marginRight: 10 }}>
+                    Analysing code — the knowledge graph fills in shortly
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={handleFinish}
@@ -982,6 +1015,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                   {submitting && <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />}
                   {submitting ? 'Starting…' : 'Start →'}
                 </button>
+                </>
               )}
             </div>
           </div>
