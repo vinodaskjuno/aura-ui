@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { getBudgetConfig, updateBudgetConfig, getAllUserBudgets, resetUserBudget, type BudgetConfig, type AllUserBudget } from '../api/budget'
+import GraphBackendPanel from '../components/settings/GraphBackendPanel'
 
 type ThemeId = 'dark1' | 'dark2' | 'light'
 
@@ -334,6 +335,13 @@ export function SettingsPage() {
           )}
         </motion.div>
       )}
+
+      {/* Graph backend — which engine serves reads, which receive writes */}
+      <motion.div className="ov-card" style={{ padding: 24, marginBottom: 16 }}
+        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15 }}>
+        <div className="section-label" style={{ marginBottom: 16 }}>Graph Backend</div>
+        <GraphBackendPanel />
+      </motion.div>
 
       {/* About section */}
       <motion.div className="ov-card" style={{ padding: 24 }}
