@@ -219,6 +219,13 @@ export function SettingsPage() {
       )}
 
       {/* Budget & Tiers — admin only */}
+      {/* Graph backend — which engine serves reads, which receive writes */}
+      <motion.div className="ov-card" style={{ padding: 24, marginBottom: 16 }}
+        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15 }}>
+        <div className="section-label" style={{ marginBottom: 16 }}>Graph Backend</div>
+        <GraphBackendPanel />
+      </motion.div>
+
       {isAdmin && (
         <motion.div className="ov-card" style={{ padding: 24, marginBottom: 16 }}
           initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.18 }}>
@@ -335,13 +342,6 @@ export function SettingsPage() {
           )}
         </motion.div>
       )}
-
-      {/* Graph backend — which engine serves reads, which receive writes */}
-      <motion.div className="ov-card" style={{ padding: 24, marginBottom: 16 }}
-        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15 }}>
-        <div className="section-label" style={{ marginBottom: 16 }}>Graph Backend</div>
-        <GraphBackendPanel />
-      </motion.div>
 
       {/* About section */}
       <motion.div className="ov-card" style={{ padding: 24 }}
