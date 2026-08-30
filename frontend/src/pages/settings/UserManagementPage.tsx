@@ -1,6 +1,7 @@
 import client from '../../api/client'
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import DirectoryNotice from '../../components/settings/DirectoryNotice'
 import { Users, Plus, Edit2, UserX, UserCheck, Search, X, Eye, EyeOff } from 'lucide-react'
 
 const ROLE_OPTIONS = [
@@ -122,6 +123,13 @@ export default function UserManagementPage() {
           <Plus size={14} /> Create User
         </motion.button>
       </div>
+
+      <DirectoryNotice>
+        Sign-in is managed by <strong>Active Directory</strong>. Directory users are
+        not listed here — their role comes from their AD group, configured in{' '}
+        <strong>Settings → Directory</strong>. The accounts below are local, and the
+        ones marked break-glass are what still work if the directory is unreachable.
+      </DirectoryNotice>
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>

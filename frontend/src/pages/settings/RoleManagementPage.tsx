@@ -2,6 +2,7 @@ import client from '../../api/client'
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { ShieldCheck, Save } from 'lucide-react'
+import DirectoryNotice from '../../components/settings/DirectoryNotice'
 
 const ALL_PERMISSIONS = [
   { key: 'dashboard',       label: 'Dashboard',          group: 'Workspace' },
@@ -91,6 +92,12 @@ export default function RoleManagementPage() {
           <ShieldCheck size={22} color="var(--color-primary)" /> Role Management
         </h2>
       </div>
+
+      <DirectoryNotice>
+        Active Directory groups are mapped to these roles in{' '}
+        <strong>Settings → Directory</strong>. Changing a role's permissions here
+        changes what every group mapped to it grants — at each person's next sign-in.
+      </DirectoryNotice>
 
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16 }}>
         {/* Role list */}

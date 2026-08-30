@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Moon, Sun, Monitor, User, LogOut, Users, ShieldCheck, ChevronRight, DollarSign, RotateCcw, Save, Loader2 } from 'lucide-react'
+import { Moon, Sun, Monitor, User, LogOut, Users, ShieldCheck, ChevronRight, DollarSign, RotateCcw, Save, Loader2, Network } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useThemeStore } from '../store/themeStore'
@@ -7,6 +7,7 @@ import { useAuthStore } from '../store/authStore'
 import { getBudgetConfig, updateBudgetConfig, getAllUserBudgets, resetUserBudget, type BudgetConfig, type AllUserBudget } from '../api/budget'
 import GraphBackendPanel from '../components/settings/GraphBackendPanel'
 import DangerZonePanel from '../components/settings/DangerZonePanel'
+import DirectoryPanel from '../components/settings/DirectoryPanel'
 
 type ThemeId = 'dark1' | 'dark2' | 'light'
 
@@ -216,6 +217,19 @@ export function SettingsPage() {
               </motion.button>
             )}
           </div>
+        </motion.div>
+      )}
+
+      {/* Directory — sits directly under Administration, because it is what
+          User Management becomes once AD is in charge of access. */}
+      {hasPermission('user_management') && (
+        <motion.div className="ov-card" style={{ padding: 24, marginBottom: 16 }}
+          initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <Network size={14} color="var(--color-primary)" />
+            <div className="section-label">Directory (LDAP / Active Directory)</div>
+          </div>
+          <DirectoryPanel />
         </motion.div>
       )}
 
