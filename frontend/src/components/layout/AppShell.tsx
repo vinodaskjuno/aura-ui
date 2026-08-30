@@ -1,13 +1,22 @@
 import { Outlet, useLocation } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Sidebar } from './Sidebar'
 import { SDLCProvider } from '../../context/SDLCContext'
 import RouteErrorBoundary from './RouteErrorBoundary'
 
+// No `out` variant, and no AnimatePresence: the page swaps immediately and fades
+// in. AnimatePresence with mode="wait" kept the OUTGOING page mounted until its
+// exit animation finished and only then mounted the incoming one — so if an exit
+// never completed, the new page never mounted at all. That is a blank content area
+// with the shell still rendered, cured by a reload (which has no outgoing page),
+// which is exactly the DevMate symptom that was reported repeatedly and never
+// reproduced in Chromium or WebKit.
+//
+// The entering animation is kept because it is purely cosmetic and cannot block a
+// mount. Nothing now sits between a route change and the new page rendering.
 const pageVariants = {
   initial: { opacity: 0, y: 10 },
   in:      { opacity: 1, y: 0 },
-  out:     { opacity: 0, y: -6 },
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const pageTransition: any = { type: 'tween', ease: 'anticipate', duration: 0.25 }
@@ -22,21 +31,18 @@ export function AppShell() {
           height: '100vh', overflow: 'hidden' }}>
           <main style={{ flex: 1, padding: '24px', overflowY: 'auto', overflowX: 'hidden',
             height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={location.pathname}
-                initial="initial"
-                animate="in"
-                exit="out"
-                variants={pageVariants}
-                transition={pageTransition}
-                style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
-              >
-                <RouteErrorBoundary routeKey={location.pathname}>
-                  <Outlet />
-                </RouteErrorBoundary>
-              </motion.div>
-            </AnimatePresence>
+            <motion.div
+              key={location.pathname}
+              initial="initial"
+              animate="in"
+              variants={pageVariants}
+              transition={pageTransition}
+              style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+            >
+              <RouteErrorBoundary routeKey={location.pathname}>
+                <Outlet />
+              </RouteErrorBoundary>
+            </motion.div>
           </main>
         </div>
       </div>
