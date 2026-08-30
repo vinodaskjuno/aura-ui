@@ -73,6 +73,10 @@ export default function DirectoryPanel() {
   if (!config) return <div style={{ fontSize: 12.5, color: '#ef4444' }}>{err}</div>
 
   const c = config.connection
+  // An empty URI means nobody has pointed this environment at a directory yet —
+  // distinct from a directory configured over plaintext, which is a fault.
+  const configured = !!c.uri.trim()
+  const secure = c.uri.startsWith('ldaps://')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -86,10 +90,12 @@ export default function DirectoryPanel() {
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)',
         borderRadius: 8, padding: '11px 13px', display: 'grid',
         gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 11.5 }}>
-        {[['Server', c.uri], ['Base DN', c.baseDn || '(not set)'],
+        {[['Server', c.uri || '(not configured)'], ['Base DN', c.baseDn || '(not set)'],
           ['Bind DN', c.bindDn || '(anonymous)'], ['User filter', c.userFilter],
-          ['Service password', c.bindPasswordSet ? 'set' : 'NOT SET'],
-          ['Transport', c.uri.startsWith('ldaps://') ? 'TLS' : (c.allowInsecure ? 'plaintext (allowed)' : 'plaintext (blocked)')]]
+          ['Service password', c.bindPasswordSet ? 'set' : 'not stored yet'],
+          ['Transport', !configured ? '—'
+            : secure ? 'TLS'
+            : c.allowInsecure ? 'plaintext (allowed)' : 'plaintext (blocked)']]
           .map(([k, v]) => (
           <div key={k}>
             <div style={{ color: 'var(--color-muted)', fontSize: 10, textTransform: 'uppercase',
@@ -99,7 +105,19 @@ export default function DirectoryPanel() {
         ))}
       </div>
 
-      {!c.uri.startsWith('ldaps://') && !c.allowInsecure && (
+      {!configured && (
+        <div style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--color-subtext)' }}>
+          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>
+            This environment has no directory yet. A platform engineer sets{' '}
+            <code>ldap_uri</code>, <code>ldap_base_dn</code> and <code>ldap_bind_dn</code>{' '}
+            in the deployment and stores the service-account password in Secrets
+            Manager. You can prepare the group mappings below in the meantime.
+          </span>
+        </div>
+      )}
+
+      {configured && !secure && !c.allowInsecure && (
         <div style={{ display: 'flex', gap: 8, fontSize: 12, color: '#fbbf24' }}>
           <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
           Sign-in will be refused: a plaintext bind sends the password in clear text.
@@ -108,7 +126,8 @@ export default function DirectoryPanel() {
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button type="button" style={ghost} disabled={busy}
+        <button type="button" style={{ ...ghost, opacity: configured ? 1 : 0.5,
+          cursor: configured ? 'pointer' : 'not-allowed' }} disabled={busy || !configured}
           onClick={async () => { setBusy(true); try { setTest(await testLdap()) } finally { setBusy(false) } }}>
           <ShieldCheck size={12} /> Test connection
         </button>
@@ -162,7 +181,8 @@ export default function DirectoryPanel() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5,
           color: 'var(--color-text)', cursor: 'pointer' }}>
-          <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+          <input type="checkbox" checked={enabled} disabled={!configured}
+            onChange={e => setEnabled(e.target.checked)} />
           Use Active Directory for sign-in
         </label>
         <button type="button" style={btn} disabled={busy} onClick={save}>
