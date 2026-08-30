@@ -17,6 +17,7 @@ import UserManagementPage from './pages/settings/UserManagementPage'
 import RoleManagementPage from './pages/settings/RoleManagementPage'
 import SchedulerPage from './pages/SchedulerPage'
 import DevChatbotPage from './pages/DevChatbotPage'
+import AIObservabilityPage from './pages/AIObservabilityPage'
 import OntologyDataLoaderPage from './pages/OntologyDataLoaderPage'
 import ReverseEngineeringPage from './pages/ReverseEngineeringPage'
 
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/qa/*"           element={<RoleProtectedRoute permission="qa_workspace"><QAWorkspacePage /></RoleProtectedRoute>} />
           <Route path="/aiops"          element={<RoleProtectedRoute permission="aiops"><AIOpsPage /></RoleProtectedRoute>} />
           <Route path="/observability"  element={<RoleProtectedRoute permission="observability"><ObservabilityPage /></RoleProtectedRoute>} />
+          <Route path="/ai-observability" element={<RoleProtectedRoute permission="dev_workspace"><AIObservabilityPage /></RoleProtectedRoute>} />
           <Route path="/ontology"       element={<RoleProtectedRoute permission="ontology"><OntologyVisualizerPage /></RoleProtectedRoute>} />
           <Route path="/connectors"     element={<RoleProtectedRoute permission="connectors"><ConnectorsPage /></RoleProtectedRoute>} />
           <Route path="/advisor"        element={<RoleProtectedRoute permission="advisor"><AdvisorPage /></RoleProtectedRoute>} />

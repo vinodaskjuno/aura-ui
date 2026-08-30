@@ -30,6 +30,7 @@ const ALL_NAV_GROUPS: NavGroup[] = [
       { to: '/dashboard',            label: 'Dashboard',           icon: LayoutDashboard, permission: 'dashboard' },
       { to: '/ontology',             label: 'Onto Verse',          icon: Orbit,           permission: 'ontology' },
       { to: '/dev-chat',             label: 'DevMate',             icon: Bot,             permission: 'dev_workspace' },
+      { to: '/ai-observability',     label: 'AI Traces',           icon: Activity,        permission: 'dev_workspace' },
       { to: '/qa',                   label: 'QualityMind',         icon: TestTube2,       permission: 'qa_workspace' },
       { to: '/aiops',                label: 'AI Ops',              icon: Activity,        permission: 'aiops' },
       { to: '/observability',        label: 'Observability',       icon: Radar,           permission: 'observability', badge: 'SRE' },
