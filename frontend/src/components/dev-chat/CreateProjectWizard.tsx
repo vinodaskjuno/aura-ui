@@ -9,6 +9,7 @@ import { useOntologyStore } from '../../store/ontologyStore'
 import { getChatSessions, type ChatSession } from '../../api/chatSessions'
 import { projectsApi } from '../../api/projects'
 import { cloneRepo, uploadFolder } from '../../api/gitOps'
+import { describeApiError } from '../../api/errors'
 
 /**
  * A folder the user picked in the browser, already filtered.
@@ -308,8 +309,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
               setFolders(list => list.map(x => (
                 x.id === f.id ? { ...x, status: 'done', message: res.message } : x)))
             } catch (err) {
-              const detail = (err as { response?: { data?: { detail?: string } } })
-                ?.response?.data?.detail ?? 'Upload failed'
+              const detail = describeApiError(err, 'Upload failed')
               setFolders(list => list.map(x => (
                 x.id === f.id ? { ...x, status: 'error', message: detail } : x)))
               window.alert(`Folder "${f.label}" was not uploaded: ${detail}`)
@@ -329,9 +329,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
           })
           clonedOk = true
         } catch (err) {
-          const detail = (err as { response?: { data?: { detail?: string } } })
-            ?.response?.data?.detail ?? 'Clone failed'
-          window.alert(`Could not clone the repository: ${detail}`)
+          window.alert(`Could not clone the repository: ${describeApiError(err, 'Clone failed')}`)
         }
       }
 
