@@ -43,3 +43,40 @@ export async function drainOutbox(backend: string): Promise<{
   const res = await client.post(`/api/graph-config/drain/${encodeURIComponent(backend)}`)
   return res.data
 }
+
+export interface WipeStatus {
+  enabled: boolean
+  reason: string
+  targets: string[]
+  scopes: string[]
+  demoSources: string[]
+  confirmWord: string
+}
+
+export interface WipeResult {
+  scope: string
+  actor: string
+  ok: boolean
+  totalDeleted: number
+  results: {
+    backend: string; ok?: boolean; before?: number; after?: number
+    deleted?: number; error?: string
+  }[]
+}
+
+/** Whether this server was deliberately armed for wipes. Off by default. */
+export async function getWipeStatus(): Promise<WipeStatus> {
+  const res = await client.get('/api/graph-config/wipe-status')
+  return res.data
+}
+
+/**
+ * Delete graph data from every configured write target.
+ *
+ * `scope: 'all'` requires `confirm` to be the exact word the status endpoint
+ * reports, and is irreversible — the server refuses without it.
+ */
+export async function wipeGraph(scope: 'demo' | 'all', confirm = ''): Promise<WipeResult> {
+  const res = await client.post('/api/graph-config/wipe', { scope, confirm })
+  return res.data
+}

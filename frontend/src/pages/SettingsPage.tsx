@@ -6,6 +6,7 @@ import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { getBudgetConfig, updateBudgetConfig, getAllUserBudgets, resetUserBudget, type BudgetConfig, type AllUserBudget } from '../api/budget'
 import GraphBackendPanel from '../components/settings/GraphBackendPanel'
+import DangerZonePanel from '../components/settings/DangerZonePanel'
 
 type ThemeId = 'dark1' | 'dark2' | 'light'
 
@@ -342,6 +343,15 @@ export function SettingsPage() {
           )}
         </motion.div>
       )}
+
+      {/* Danger Zone — destructive graph operations. Last before About, so it is
+          never the first thing a hand lands on. */}
+      <motion.div className="ov-card" style={{ padding: 24, marginBottom: 16,
+        borderColor: 'rgba(239,68,68,0.35)' }}
+        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.18 }}>
+        <div className="section-label" style={{ marginBottom: 16, color: '#fca5a5' }}>Danger Zone</div>
+        <DangerZonePanel />
+      </motion.div>
 
       {/* About section */}
       <motion.div className="ov-card" style={{ padding: 24 }}
