@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Loader2, CheckCircle2, XCircle, AlertTriangle, ChevronLeft, Cloud, Clock, User,
+  Play, RefreshCw,
 } from 'lucide-react'
-import { qaApi, type RunReport, type RunStep } from '../../api/qa'
+import { qaApi, type QaCapabilities, type RunReport, type RunStep } from '../../api/qa'
+import LocalRunView from './LocalRunView'
 import StepTimeline from './StepTimeline'
 
 /**
@@ -37,10 +39,16 @@ function Meta({ icon, children }: { icon: React.ReactNode; children: React.React
 
 export default function ResultsBrowser({ projectId }: { projectId: string }) {
   const [runs, setRuns] = useState<RunReport[]>([])
+  // `firstLoad` gates the full-panel spinner. Using `loading` for it meant a refresh
+  // — including the one a finished run triggers — replaced the whole panel and
+  // UNMOUNTED the open run modal, discarding its log and summary mid-view.
+  const [firstLoad, setFirstLoad] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [open, setOpen] = useState<{ report: RunReport; steps: RunStep[] } | null>(null)
   const [openLoading, setOpenLoading] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [caps, setCaps] = useState<QaCapabilities | null>(null)
 
   const load = useCallback(async () => {
     if (!projectId) { setRuns([]); setLoading(false); return }
@@ -49,10 +57,17 @@ export default function ResultsBrowser({ projectId }: { projectId: string }) {
       setRuns((await qaApi.listResults(projectId)).data)
     } catch {
       setError('Could not read stored results.')
-    } finally { setLoading(false) }
+    } finally { setLoading(false); setFirstLoad(false) }
   }, [projectId])
 
   useEffect(() => { load() }, [load])
+
+  // Whether a run can be STARTED here is separate from whether results can be READ:
+  // evidence lives in shared S3, so this list works everywhere, but execution needs
+  // podman and a browser.
+  useEffect(() => {
+    qaApi.capabilities().then(r => setCaps(r.data)).catch(() => setCaps(null))
+  }, [])
 
   const openRun = async (runId: string) => {
     setOpenLoading(true)
@@ -63,7 +78,7 @@ export default function ResultsBrowser({ projectId }: { projectId: string }) {
     } finally { setOpenLoading(false) }
   }
 
-  if (loading) {
+  if (firstLoad && loading) {
     return <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5,
       color: 'var(--color-subtext)', padding: '18px 0' }}>
       <Loader2 size={14} className="animate-spin" /> Reading stored results…
@@ -138,8 +153,43 @@ export default function ResultsBrowser({ projectId }: { projectId: string }) {
     )
   }
 
+  const canRun = caps?.canRun ?? false
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* The entry point for a FIRST run. Without this the only way to start one was
+          to open an existing run's detail drawer — which a project with no runs does
+          not have. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+        marginBottom: 4 }}>
+        <button type="button" className="ov-btn ov-btn-primary"
+          disabled={!canRun || !projectId}
+          title={canRun ? 'Start a test run' : (caps?.reason || 'Checking…')}
+          onClick={() => setStarting(true)}
+          style={{ opacity: canRun ? 1 : 0.5, cursor: canRun ? 'pointer' : 'not-allowed' }}>
+          <Play size={13} /> Start a run
+        </button>
+        <button type="button" className="ov-btn ov-btn-ghost" onClick={load} disabled={loading}>
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          Refresh
+        </button>
+        <span style={{ fontSize: 11.5, color: 'var(--color-muted)', lineHeight: 1.5 }}>
+          {caps === null
+            ? 'Checking what this environment can do…'
+            : canRun
+              ? `${runs.length} stored run(s). Runs execute here.`
+              : `${runs.length} stored run(s). ${caps.reason} — start a run where podman is available; results still appear here.`}
+        </span>
+      </div>
+
+      {starting && (
+        <LocalRunView
+          projectId={projectId}
+          onClose={() => setStarting(false)}
+          onComplete={load}
+        />
+      )}
+
       {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
 
       {!runs.length && !error && (
