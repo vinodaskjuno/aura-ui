@@ -20,6 +20,11 @@ export default defineConfig({
       // is an http proxy and does not perform the Upgrade handshake.
       '/api/ontology/ws': { target: 'ws://localhost:8000', changeOrigin: true, ws: true },
       '/api/observability/ws': { target: 'ws://localhost:8000', changeOrigin: true, ws: true },
+      // QualityMind streams a local run's progress. wsOrigin() derives the WS host
+      // from window.location, so this goes through the proxy and needs an explicit
+      // ws rule — the generic '/api' entry below is an http proxy and silently fails
+      // the Upgrade handshake.
+      '/api/qa/ws': { target: 'ws://localhost:8000', changeOrigin: true, ws: true },
 
       // Pure API prefixes — no React Router collision
       '/api':      { target: 'http://localhost:8000', changeOrigin: true },
