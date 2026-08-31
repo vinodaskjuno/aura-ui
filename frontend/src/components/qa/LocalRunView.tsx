@@ -47,6 +47,10 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
   const [lines, setLines] = useState<string[]>([])
   const [steps, setSteps] = useState<RunStep[]>([])
   const [report, setReport] = useState<RunReport | null>(null)
+  // From the `planned` event. A phase chip that merely lights up cannot distinguish
+  // "four emulators started" from "this project needs none", and the second is the
+  // common case — the demo shop's storage is in-memory.
+  const [emuNames, setEmuNames] = useState<string[] | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const logRef = useRef<HTMLDivElement | null>(null)
 
@@ -61,7 +65,7 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
   useEffect(() => () => wsRef.current?.close(), [])
 
   const start = useCallback(() => {
-    setLines([]); setSteps([]); setReport(null); setPhase('plan')
+    setLines([]); setSteps([]); setReport(null); setEmuNames(null); setPhase('plan')
 
     const ws = new WebSocket(`${wsOrigin()}/api/qa/ws/local-run`)
     wsRef.current = ws
@@ -92,6 +96,7 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
         setPhase('error')
         return
       }
+      if (msg.type === 'planned' && Array.isArray(msg.emulators)) setEmuNames(msg.emulators)
       if (msg.message) setLines(l => [...l, msg.message])
       if (ORDER.includes(msg.type)) setPhase(msg.type as Phase)
     }
@@ -167,6 +172,11 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
           {PHASES.map(p => {
             const on = reached(p.id)
             const active = phase === p.id
+            // Say what the emulator phase actually did, rather than implying it
+            // started something.
+            const label = p.id === 'emulator' && emuNames !== null
+              ? (emuNames.length ? `Emulators: ${emuNames.join(', ')}` : 'No emulators needed')
+              : p.label
             return (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6,
                 fontSize: 11.5, padding: '6px 10px', borderRadius: 20,
@@ -174,7 +184,7 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
                 background: on ? 'rgba(79,142,247,.10)' : 'transparent',
                 color: on ? 'var(--color-primary)' : 'var(--color-muted)',
                 fontWeight: active ? 700 : 500 }}>
-                {p.icon}{p.label}
+                {p.icon}{label}
               </div>
             )
           })}
