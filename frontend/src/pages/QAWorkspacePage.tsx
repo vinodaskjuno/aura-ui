@@ -4,12 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   FlaskConical, RefreshCw, Layers3, Activity, FileCheck,
   ChevronDown, ChevronUp, FileText, Server, ShieldCheck, ShieldX,
-  X, Download,
+  X, Download, Camera, Play,
 } from 'lucide-react'
 import { qaApi, type TestRun, type TestArtifact } from '../api/qa'
 import { useAuthStore } from '../store/authStore'
 import SOPTab from '../components/sop/SOPTab'
-import ContainerRunView from '../components/qa/ContainerRunView'
+import LocalRunView from '../components/qa/LocalRunView'
+import ResultsBrowser from '../components/qa/ResultsBrowser'
 import ProjectStatusBoard from '../components/qa/ProjectStatusBoard'
 import TestExecutionModal from '../components/qa/TestExecutionModal'
 import ActivityFeed from '../components/qa/ActivityFeed'
@@ -18,10 +19,13 @@ import DemoScreenshots from '../components/qa/DemoScreenshots'
 import { SAMPLE_PROJECT, SAMPLE_SUITES, DEMO_PROJECT_ID } from '../data/qa-sample'
 
 // ── Tab definition ────────────────────────────────────────────────────────────
-type Tab = 'runs' | 'artifacts' | 'activity' | 'sop'
+type Tab = 'runs' | 'results' | 'artifacts' | 'activity' | 'sop'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'runs',      label: 'Test Runs',    icon: <Layers3 size={13} /> },
+  // Stored evidence, read from S3 — visible in every environment including this
+  // one, because a run executed on a laptop writes to the same bucket.
+  { id: 'results',   label: 'Results',      icon: <Camera size={13} /> },
   { id: 'artifacts', label: 'Artifacts',    icon: <FileCheck size={13} /> },
   { id: 'activity',  label: 'Activity',     icon: <Activity size={13} /> },
   { id: 'sop',       label: 'SOP',          icon: <FileText size={13} /> },
@@ -177,18 +181,18 @@ function RunDetailDrawer({ run, projectId, onClose, onRefresh }: {
               display: 'flex', alignItems: 'center', transition: 'all 0.15s' }}
             whileHover={{ scale: 1.01, background: 'rgba(16,185,129,0.18)' }}
             whileTap={{ scale: 0.98 }}>
-            <Server size={13} /> Run in Container (ECS)
+            <Play size={13} /> Run tests
           </motion.button>
         </div>
       </div>
 
       <AnimatePresence>
         {showContainer && (
-          <ContainerRunView
-            run={run}
+          <LocalRunView
             projectId={projectId}
+            defaultUrl={run.appUrl}
             onClose={() => setShowContainer(false)}
-            onComplete={() => { setShowContainer(false); onRefresh() }}
+            onComplete={onRefresh}
           />
         )}
       </AnimatePresence>
@@ -591,6 +595,10 @@ export default function QAWorkspacePage() {
                   onViewArtifacts={handleViewArtifacts}
                   onRefresh={handleRefreshSuites}
                 />
+              )}
+
+              {tab === 'results' && (
+                <ResultsBrowser projectId={selectedProject.projectId as string} />
               )}
 
               {tab === 'artifacts' && (

@@ -49,6 +49,74 @@ export interface TestResult {
   status: string
 }
 
+// ── Local runs: evidence stored in S3 ────────────────────────────────────────
+// report.json is the single object every surface reads — this UI, the CLI and the
+// VS Code plugin — so a new surface never needs a new endpoint.
+
+export interface RunStep {
+  index:          number
+  action:         string
+  target:         string
+  status:         'passed' | 'failed' | 'skipped' | 'unemulated'
+  durationMs:     number
+  error:          string
+  screenshotKey:  string
+  screenshotUrl?: string
+  caseId:         string
+  startedAt:      string
+}
+
+export interface EmulatorRecord {
+  cloud:     string
+  image:     string
+  digest:    string
+  port:      number
+  container: string
+  started:   boolean
+  error:     string
+}
+
+export interface RunCase {
+  case_id:        string
+  kind:           'api' | 'ui' | 'smoke'
+  name:           string
+  verifies_label: string
+  verifies_eid:   string
+  method:         string
+  path:           string
+  source_file:    string
+}
+
+export interface RunReport {
+  runId:           string
+  projectId:       string
+  appUrl:          string
+  status:          'passed' | 'failed' | 'unavailable'
+  reason:          string
+  startedAt:       string
+  completedAt:     string
+  ranBy:           string
+  totalPassed:     number
+  totalFailed:     number
+  totalSkipped:    number
+  totalUnemulated: number
+  durationMs:      number
+  cases:           RunCase[]
+  emulators:       EmulatorRecord[]
+  covered:         { label: string; externalId: string }[]
+  exploratory:     boolean
+}
+
+/** What THIS backend can do — the UI disables the run button with a reason rather
+ *  than offering one that fails, which is what the retired ECS path did. */
+export interface QaCapabilities {
+  canRun:  boolean
+  podman:  boolean
+  browser: boolean
+  reason:  string
+  clouds:  { name: string; port: number; image: string }[]
+}
+
 export interface TestArtifact {
   key: string
   url: string
@@ -70,11 +138,14 @@ export const qaApi = {
   getArtifacts: (runId: string) => client.get<TestArtifact[]>(`/api/qa/runs/${runId}/artifacts`),
   getActivity: () => client.get('/api/qa/activity'),
 
-  // Container test execution (ECS Fargate)
-  runInContainer: (data: { run_id: string; project_id: string; app_url: string; app_description?: string }) =>
-    client.post<ContainerRunResult>('/api/qa/run/container', data),
-  getContainerScreenshots: (runId: string) =>
-    client.get<Screenshot[]>(`/api/qa/run/container/${runId}/screenshots`),
+  // Local execution: podman emulators + Playwright, evidence in S3
+  capabilities: () => client.get<QaCapabilities>('/api/qa/capabilities'),
+  runLocal: (data: { project_id: string; app_url: string; run_id?: string; exploratory?: boolean }) =>
+    client.post<RunReport>('/api/qa/run/local', data),
+  listResults: (projectId: string) =>
+    client.get<RunReport[]>(`/api/qa/results/${projectId}`),
+  getResult: (projectId: string, runId: string) =>
+    client.get<{ report: RunReport; steps: RunStep[] }>(`/api/qa/results/${projectId}/${runId}`),
 }
 
 export const TEST_TYPE_CONFIG: Record<string, { label: string; icon: string; color: string; desc: string }> = {
