@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
-  X, Play, CheckCircle2, XCircle, Loader, Ban, Network, Cloud, Camera,
-  Database, ListChecks, Server,
+  X, Play, CheckCircle2, XCircle, Loader, Ban,
 } from 'lucide-react'
 import { wsOrigin } from '../../api/wsUrl'
 import { qaApi, type QaCapabilities, type RunReport } from '../../api/qa'
 import { useAuthStore } from '../../store/authStore'
 import StepTimeline from './StepTimeline'
+import RunTimeline, { type RunEvent } from './RunTimeline'
 import type { RunStep } from '../../api/qa'
 
 /**
@@ -21,15 +21,6 @@ import type { RunStep } from '../../api/qa'
  */
 
 type Phase = 'idle' | 'plan' | 'planned' | 'emulator' | 'app' | 'running' | 'evidence' | 'graph' | 'done' | 'error'
-
-const PHASES: { id: Phase; label: string; icon: React.ReactNode }[] = [
-  { id: 'plan',     label: 'Plan from graph', icon: <ListChecks size={13} /> },
-  { id: 'emulator', label: 'Cloud emulators', icon: <Cloud size={13} /> },
-  { id: 'app',      label: 'Start the app',   icon: <Server size={13} /> },
-  { id: 'running',  label: 'Run + capture',   icon: <Camera size={13} /> },
-  { id: 'evidence', label: 'Evidence to S3',  icon: <Database size={13} /> },
-  { id: 'graph',    label: 'Write back',      icon: <Network size={13} /> },
-]
 
 const ORDER: Phase[] = ['plan', 'planned', 'emulator', 'app', 'running', 'evidence', 'graph', 'done']
 
@@ -47,28 +38,19 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
   // already running instead — which is what you want against a deployed environment.
   const [appUrl, setAppUrl] = useState(defaultUrl || '')
   const [phase, setPhase] = useState<Phase>('idle')
-  const [lines, setLines] = useState<string[]>([])
+  const [events, setEvents] = useState<RunEvent[]>([])
   const [steps, setSteps] = useState<RunStep[]>([])
   const [report, setReport] = useState<RunReport | null>(null)
-  // From the `planned` event. A phase chip that merely lights up cannot distinguish
-  // "four emulators started" from "this project needs none", and the second is the
-  // common case — the demo shop's storage is in-memory.
-  const [emuNames, setEmuNames] = useState<string[] | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
-  const logRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     qaApi.capabilities().then(r => setCaps(r.data)).catch(() => setCaps(null))
   }, [])
 
-  useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
-  }, [lines])
-
   useEffect(() => () => wsRef.current?.close(), [])
 
   const start = useCallback(() => {
-    setLines([]); setSteps([]); setReport(null); setEmuNames(null); setPhase('plan')
+    setEvents([]); setSteps([]); setReport(null); setPhase('plan')
 
     const ws = new WebSocket(`${wsOrigin()}/api/qa/ws/local-run`)
     wsRef.current = ws
@@ -79,35 +61,31 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
 
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data)
-      if (msg.type === 'step') {
-        // Streamed for progress; the full step record with its screenshot comes from
-        // S3 in the report, so this only advances the visible count.
-        setLines(l => [...l, `  ${msg.status.padEnd(9)} ${msg.action}`])
-        return
-      }
+
       if (msg.type === 'report') {
         setReport(msg as RunReport)
         setPhase('done')
+        // The streamed steps carry status only; the stored ones carry screenshots.
         qaApi.getResult(projectId, msg.runId)
           .then(r => setSteps(r.data.steps))
           .catch(() => { /* the report already carries the summary */ })
         onComplete?.()
         return
       }
-      if (msg.type === 'error') {
-        setLines(l => [...l, `error: ${msg.message}`])
-        setPhase('error')
-        return
-      }
-      if (msg.type === 'planned' && Array.isArray(msg.emulators)) setEmuNames(msg.emulators)
-      if (msg.message) setLines(l => [...l, msg.message])
+
+      // Everything else is timeline material. Accumulating the events rather than
+      // formatting them here keeps one interpretation of the stream, in RunTimeline.
+      setEvents(e => [...e, msg as RunEvent])
+      if (msg.type === 'error') { setPhase('error'); return }
       if (ORDER.includes(msg.type)) setPhase(msg.type as Phase)
     }
 
-    ws.onerror = () => { setPhase('error'); setLines(l => [...l, 'connection failed']) }
+    ws.onerror = () => {
+      setPhase('error')
+      setEvents(e => [...e, { type: 'error', message: 'connection to the run failed' }])
+    }
   }, [appUrl, projectId, token, onComplete])
 
-  const reached = (p: Phase) => ORDER.indexOf(phase) >= ORDER.indexOf(p)
   const busy = phase !== 'idle' && phase !== 'done' && phase !== 'error'
   const blocked = caps ? !caps.canRun : false
 
@@ -178,38 +156,7 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
           </span>
         </div>
 
-        {/* Lifecycle */}
-        <div style={{ display: 'flex', gap: 7, marginBottom: 14, flexWrap: 'wrap' }}>
-          {PHASES.map(p => {
-            const on = reached(p.id)
-            const active = phase === p.id
-            // Say what the emulator phase actually did, rather than implying it
-            // started something.
-            const label = p.id === 'emulator' && emuNames !== null
-              ? (emuNames.length ? `Emulators: ${emuNames.join(', ')}` : 'No emulators needed')
-              : p.label
-            return (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6,
-                fontSize: 11.5, padding: '6px 10px', borderRadius: 20,
-                border: `1px solid ${on ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                background: on ? 'rgba(79,142,247,.10)' : 'transparent',
-                color: on ? 'var(--color-primary)' : 'var(--color-muted)',
-                fontWeight: active ? 700 : 500 }}>
-                {p.icon}{label}
-              </div>
-            )
-          })}
-        </div>
-
-        {lines.length > 0 && (
-          <div ref={logRef} style={{ background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px',
-            maxHeight: 190, overflowY: 'auto', fontFamily: 'var(--font-mono)',
-            fontSize: 11.5, lineHeight: 1.65, color: 'var(--color-subtext)',
-            whiteSpace: 'pre-wrap', marginBottom: 14 }}>
-            {lines.join('\n')}
-          </div>
-        )}
+        <RunTimeline events={events} />
 
         {report && (
           <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10,
