@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   X, Play, CheckCircle2, XCircle, Loader, Ban, Network, Cloud, Camera,
-  Database, ListChecks,
+  Database, ListChecks, Server,
 } from 'lucide-react'
 import { wsOrigin } from '../../api/wsUrl'
 import { qaApi, type QaCapabilities, type RunReport } from '../../api/qa'
@@ -20,17 +20,18 @@ import type { RunStep } from '../../api/qa'
  * pattern-matching substrings in log lines.
  */
 
-type Phase = 'idle' | 'plan' | 'planned' | 'emulator' | 'running' | 'evidence' | 'graph' | 'done' | 'error'
+type Phase = 'idle' | 'plan' | 'planned' | 'emulator' | 'app' | 'running' | 'evidence' | 'graph' | 'done' | 'error'
 
 const PHASES: { id: Phase; label: string; icon: React.ReactNode }[] = [
   { id: 'plan',     label: 'Plan from graph', icon: <ListChecks size={13} /> },
   { id: 'emulator', label: 'Cloud emulators', icon: <Cloud size={13} /> },
+  { id: 'app',      label: 'Start the app',   icon: <Server size={13} /> },
   { id: 'running',  label: 'Run + capture',   icon: <Camera size={13} /> },
   { id: 'evidence', label: 'Evidence to S3',  icon: <Database size={13} /> },
   { id: 'graph',    label: 'Write back',      icon: <Network size={13} /> },
 ]
 
-const ORDER: Phase[] = ['plan', 'planned', 'emulator', 'running', 'evidence', 'graph', 'done']
+const ORDER: Phase[] = ['plan', 'planned', 'emulator', 'app', 'running', 'evidence', 'graph', 'done']
 
 interface Props {
   projectId: string
@@ -42,7 +43,9 @@ interface Props {
 export default function LocalRunView({ projectId, defaultUrl, onClose, onComplete }: Props) {
   const token = useAuthStore(s => s.token)
   const [caps, setCaps] = useState<QaCapabilities | null>(null)
-  const [appUrl, setAppUrl] = useState(defaultUrl || 'http://localhost:3000')
+  // Empty means "start the project's own application". A URL targets something
+  // already running instead — which is what you want against a deployed environment.
+  const [appUrl, setAppUrl] = useState(defaultUrl || '')
   const [phase, setPhase] = useState<Phase>('idle')
   const [lines, setLines] = useState<string[]>([])
   const [steps, setSteps] = useState<RunStep[]>([])
@@ -71,7 +74,7 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
     wsRef.current = ws
 
     ws.onopen = () => ws.send(JSON.stringify({
-      token, project_id: projectId, app_url: appUrl,
+      token, project_id: projectId, app_url: appUrl.trim(),
     }))
 
     ws.onmessage = (ev) => {
@@ -153,18 +156,26 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 9, marginBottom: 16, flexWrap: 'wrap' }}>
-          <input value={appUrl} onChange={e => setAppUrl(e.target.value)}
-            disabled={busy} placeholder="http://localhost:3000"
-            style={{ flex: 1, minWidth: 240, background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)', borderRadius: 7,
-              padding: '8px 11px', color: 'var(--color-text)', fontSize: 12.5,
-              fontFamily: 'var(--font-mono)' }} />
-          <button type="button" className="ov-btn ov-btn-primary"
-            disabled={busy || blocked || !appUrl.trim()} onClick={start}>
-            {busy ? <Loader size={13} className="animate-spin" /> : <Play size={13} />}
-            {busy ? 'Running…' : 'Start run'}
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+            <input value={appUrl} onChange={e => setAppUrl(e.target.value)}
+              disabled={busy}
+              placeholder="Leave empty to start this project's own app"
+              style={{ flex: 1, minWidth: 260, background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)', borderRadius: 7,
+                padding: '8px 11px', color: 'var(--color-text)', fontSize: 12.5,
+                fontFamily: 'var(--font-mono)' }} />
+            <button type="button" className="ov-btn ov-btn-primary"
+              disabled={busy || blocked} onClick={start}>
+              {busy ? <Loader size={13} className="animate-spin" /> : <Play size={13} />}
+              {busy ? 'Running…' : 'Start run'}
+            </button>
+          </div>
+          <span style={{ fontSize: 11.5, color: 'var(--color-muted)', lineHeight: 1.5 }}>
+            {appUrl.trim()
+              ? 'Tests will run against the URL above, which must already be serving.'
+              : 'QualityMind will start the project\u2019s API and UI from its working copy, on free ports, and stop them afterwards.'}
+          </span>
         </div>
 
         {/* Lifecycle */}
