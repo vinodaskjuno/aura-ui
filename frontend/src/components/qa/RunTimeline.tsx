@@ -1,6 +1,6 @@
 import {
-  CheckCircle2, XCircle, Loader, Circle, MinusCircle, ListChecks, Cloud,
-  Server, Camera, Database, Network, Flag,
+  CheckCircle2, XCircle, Loader, Circle, MinusCircle, AlertTriangle, ListChecks,
+  Cloud, Server, Camera, Database, Network, Flag,
 } from 'lucide-react'
 
 /**
@@ -41,9 +41,14 @@ export interface RunEvent {
   failed?: number
   skipped?: number
   durationMs?: number
+  reason?: string
 }
 
-type State = 'pending' | 'active' | 'done' | 'failed' | 'skipped'
+// `skipped` means "this stage did not apply" — no cloud dependencies, say.
+// `blocked` means "this could not run", which is a different thing entirely and was
+// previously shown with the same "not needed" label: a run that failed to start read
+// as work that was deliberately unnecessary.
+type State = 'pending' | 'active' | 'done' | 'failed' | 'skipped' | 'blocked'
 
 interface Row { text: string; state: State; hint?: string }
 interface Stage { id: string; label: string; icon: React.ReactNode; state: State; detail?: string; rows: Row[] }
@@ -177,9 +182,10 @@ export function toStages(events: RunEvent[]): Stage[] {
       case 'done': {
         close('running'); close('app'); close('emulator')
         const d = ensure('done')
-        d.state = ev.status === 'failed' ? 'failed' : ev.status === 'unavailable' ? 'skipped' : 'done'
+        d.state = ev.status === 'failed' ? 'failed'
+          : ev.status === 'unavailable' ? 'blocked' : 'done'
         d.detail = ev.status === 'unavailable'
-          ? (ev.message || 'Could not run')
+          ? (ev.reason || ev.message || 'Could not run')
           : `${ev.passed ?? 0} passed · ${ev.failed ?? 0} failed · ${ev.skipped ?? 0} skipped`
             + (ev.durationMs ? ` · ${(ev.durationMs / 1000).toFixed(1)}s` : '')
         break
@@ -203,6 +209,12 @@ const LOOK: Record<State, { color: string; icon: React.ReactNode }> = {
   done:    { color: '#10b981',              icon: <CheckCircle2 size={13} /> },
   failed:  { color: '#ef4444',              icon: <XCircle size={13} /> },
   skipped: { color: '#94a3b8',              icon: <MinusCircle size={13} /> },
+  blocked: { color: '#f59e0b',              icon: <AlertTriangle size={13} /> },
+}
+
+const TAG: Partial<Record<State, { text: string; color: string }>> = {
+  skipped: { text: 'not needed',  color: '#94a3b8' },
+  blocked: { text: 'could not run', color: '#f59e0b' },
 }
 
 export default function RunTimeline({ events }: { events: RunEvent[] }) {
@@ -230,9 +242,9 @@ export default function RunTimeline({ events }: { events: RunEvent[] }) {
                   color: stage.state === 'pending' ? 'var(--color-muted)' : 'var(--color-text)' }}>
                   {stage.label}
                 </span>
-                {stage.state === 'skipped' && (
+                {TAG[stage.state] && (
                   <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em',
-                    color: '#94a3b8' }}>not needed</span>
+                    color: TAG[stage.state]!.color }}>{TAG[stage.state]!.text}</span>
                 )}
               </div>
 

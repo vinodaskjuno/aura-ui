@@ -171,9 +171,8 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
               {report.totalPassed} passed · {report.totalFailed} failed
               {report.totalSkipped > 0 && ` · ${report.totalSkipped} skipped`}
             </span>
-            {report.reason && (
-              <span style={{ color: '#fbbf24', fontSize: 12 }}>{report.reason}</span>
-            )}
+            {/* The reason is shown on the Finished stage above; repeating it here
+                just made the same paragraph appear twice. */}
           </div>
         )}
 
