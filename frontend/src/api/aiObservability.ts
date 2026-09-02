@@ -9,6 +9,22 @@ export interface StoreCapabilities {
   fullTextSearch: boolean
   tagFilter: boolean
   aggregations: boolean
+  /** Native, queryable feedback scores. False on DynamoDB, where they are a JSON blob. */
+  feedbackScores?: boolean
+  /** The store is configured but unreachable — render an outage, not an empty project. */
+  degraded?: boolean
+  /** Whether the Opik stack is deployed at all. False → hide the embed tab. */
+  opikEnabled?: boolean
+  /**
+   * Where a BROWSER should load the Opik UI from, resolved server-side.
+   *
+   * Its own origin (same host, Opik's own port) rather than a /opik/ sub-path:
+   * Comet's published image is built with Vite base=/, so its assets are absolute
+   * and under a sub-path the browser fetches them from Aura's origin and gets
+   * Aura's own SPA back. Comes from the API rather than import.meta.env, which is
+   * inlined at build time and would pin one image to one environment.
+   */
+  opikUiUrl?: string
   note: string
 }
 
@@ -17,7 +33,46 @@ export interface TraceRow {
   status: string; startTime: string; latencyMs: number; spanCount: number
   totalTokens: number; costUsd: number
   inputPreview?: string; outputPreview?: string
-  onlineScores?: { name: string; value: number; passed: boolean }[]
+  onlineScores?: { name: string; value: number; passed: boolean; reason?: string }[]
+  /** Opik-only extras. Absent on the DynamoDB store, so all optional. */
+  otelTraceId?: string
+  providers?: string[]
+  llmSpanCount?: number
+  onlineScoredAt?: string
+}
+
+export interface Summary {
+  projectId: string
+  /** `exact: false` means these numbers cover the most recent `limit` traces only. */
+  window: { traces: number; limit: number; exact: boolean }
+  kpis: {
+    traces: number; errors: number; errorRate: number
+    costUsd: number; totalTokens: number
+    p50LatencyMs: number; p95LatencyMs: number; avgCostUsd: number
+  }
+  daily: { day: string; traces: number; errors: number; costUsd: number; totalTokens: number }[]
+  scores: { name: string; mean: number; count: number }[]
+  providers: { provider: string; traces: number }[]
+  store: string
+  degraded: boolean
+}
+
+export interface OnboardingSnippet {
+  label: string
+  language: string
+  code: string
+}
+
+export interface Onboarding {
+  style: string
+  projectName: string
+  /** Plaintext, returned ONCE on creation. Empty when an existing key was reused. */
+  apiKey: string
+  apiKeyHint: string
+  isNewKey: boolean
+  toolLabel: string
+  snippets: OnboardingSnippet[]
+  notes: string[]
 }
 
 export interface SpanRow {
@@ -89,12 +144,30 @@ const get = async <T,>(path: string): Promise<T> => (await client.get(`${BASE}${
 export const getCapabilities = () => get<StoreCapabilities>('/capabilities')
 export const listProjects = () => get<{ projects: ProjectRow[] }>('/projects')
 
-export const listTraces = (projectId: string, opts: { status?: string; threadId?: string } = {}) => {
-  const p = new URLSearchParams({ projectId, limit: '100' })
+export const listTraces = (
+  projectId: string,
+  opts: { status?: string; threadId?: string; search?: string; limit?: number } = {},
+) => {
+  const p = new URLSearchParams({ projectId, limit: String(opts.limit ?? 100) })
   if (opts.status) p.set('status', opts.status)
   if (opts.threadId) p.set('threadId', opts.threadId)
+  // Only sent when the caller knows the store supports it: the API returns 400
+  // rather than quietly handing back an unfiltered list.
+  if (opts.search) p.set('search', opts.search)
   return get<{ traces: TraceRow[] }>(`/traces?${p}`)
 }
+
+/** KPIs + daily series for the Overview tab. */
+export const getSummary = (projectId: string, limit = 500) =>
+  get<Summary>(`/summary?projectId=${encodeURIComponent(projectId)}&limit=${limit}`)
+
+/** Human feedback on a trace. Lands wherever the active store keeps scores. */
+export const setFeedback = async (
+  traceId: string, projectId: string,
+  body: { name: string; value: number; reason?: string },
+) => (await client.put(
+  `${BASE}/traces/${encodeURIComponent(traceId)}/feedback?projectId=${encodeURIComponent(projectId)}`,
+  body)).data as { stored: boolean }
 
 export const getTrace = (traceId: string, projectId: string) =>
   get<{ trace: TraceRow; spans: SpanRow[] }>(
@@ -134,6 +207,11 @@ export const runExperiment = async (id: string, body: {
   promptTemplate?: string; system?: string; limit?: number
 }) => (await client.post(`${BASE}/experiments/${encodeURIComponent(id)}/run`, body)).data
 
+/** Side-by-side experiment comparison. The endpoint has existed since the feature
+ *  shipped and had neither a wrapper nor a UI. */
+export const compareExperiments = (ids: string[]) =>
+  get<Record<string, unknown>>(`/experiments/compare?ids=${encodeURIComponent(ids.join(','))}`)
+
 export const listPrompts = (projectId = '') =>
   get<{ prompts: PromptVersion[] }>(`/prompts?projectId=${encodeURIComponent(projectId)}`)
 export const getPrompt = (id: string) =>
@@ -150,3 +228,26 @@ export const setOnlineEval = async (body: OnlineEvalConfig) =>
   (await client.put(`${BASE}/online-eval`, body)).data as OnlineEvalConfig
 export const runOnlineSweep = async () =>
   (await client.post(`${BASE}/online-eval/run`)).data
+
+// ── Agent onboarding ─────────────────────────────────────────────────────────
+
+export const listOnboardingStyles = () =>
+  get<{ styles: string[]; default: string }>('/onboarding/styles')
+
+/** Provisions (or reuses) a gateway key and returns copy-paste instrumentation. */
+export const onboard = async (body: { style: string; projectName: string }) =>
+  (await client.post(`${BASE}/onboarding`, body)).data as Onboarding
+
+// ── Embedded Opik ────────────────────────────────────────────────────────────
+// Opening the embedded UI is a browser NAVIGATION, which cannot carry an
+// Authorization header — so the backend exchanges the session JWT for a short-lived
+// HttpOnly cookie scoped to /opik, and nginx gates that path with an auth_request.
+// Call this before rendering the iframe, and again if it 401s.
+
+export const openOpikSession = async () => {
+  await client.post(`${BASE}/opik-session`)
+}
+
+export const closeOpikSession = async () => {
+  await client.delete(`${BASE}/opik-session`)
+}

@@ -68,10 +68,21 @@ COPY --from=build /build/dist /usr/share/nginx/html
 
 # Overridden per environment: "backend:8000" in compose,
 # "backend.aura.local:8000" via ECS Service Connect.
+#
+# OPIK_FRONTEND_URL defaults to a name that does NOT resolve when Opik is not
+# deployed, which is deliberate: /opik/ then returns 502 rather than falling through
+# to the SPA and rendering Aura's own index.html under an Opik URL. A confusing 502
+# beats a page that looks like it worked.
 ENV BACKEND_URL=backend:8000 \
+    OPIK_FRONTEND_URL=opik-frontend:5173 \
+    OPIK_UI_PORT=8081 \
     NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx/conf.d
 
 EXPOSE 80
+# Opik's UI, on its own port. It cannot share port 80 under a sub-path: the published
+# Opik image is built with Vite base=/, so its assets are absolute and would resolve
+# against Aura's origin. See the OPIK_UI_PORT server block in nginx.conf.template.
+EXPOSE 8081
 
 # Served by nginx itself, so UI health never depends on the backend being up.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \

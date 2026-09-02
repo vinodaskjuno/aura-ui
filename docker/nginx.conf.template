@@ -35,6 +35,17 @@ upstream backend {
     keepalive 32;
 }
 
+# ── Opik frontend, same static-upstream rule as `backend` above ──────────────
+# Do NOT convert this to `resolver` + a variable proxy_pass either; the comment
+# above explains why that breaks under Service Connect. OPIK_FRONTEND_URL is
+# templated so compose and ECS can point at different hosts, and it defaults to a
+# name that simply will not resolve when Opik is not deployed — which is the correct
+# outcome: /opik/ then 502s instead of silently serving the SPA fallback.
+upstream opik_frontend {
+    server ${OPIK_FRONTEND_URL};
+    keepalive 16;
+}
+
 # WebSocket upgrade: "upgrade" when the client asked for it, "close" otherwise.
 map $http_upgrade $connection_upgrade {
     default upgrade;
@@ -232,6 +243,43 @@ server {
     location ^~ /graph/  { return 404; }
     location ^~ /sparql/ { return 404; }
 
+    # ── Embedded Opik, gated by an Aura session ──────────────────────────────
+    # THIS BLOCK IS THE SECURITY BOUNDARY FOR THE WHOLE FEATURE.
+    #
+    # Open-source Opik has NO authentication. With AUTH_ENABLED=false its AuthModule
+    # installs a no-op auth service and every endpoint answers without a credential —
+    # verified against a live 2.2.46, where the complete project list came back with
+    # no headers at all. Opik holds every prompt and completion in the deployment.
+    # If these two blocks lose their auth_request, all of it is public.
+    #
+    # `auth_request` issues a subrequest to the Aura backend, which validates the
+    # short-lived HttpOnly cookie minted by POST /api/ai-observability/opik-session
+    # (src/routers/opik_gateway.py). The subrequest inherits the original request's
+    # headers, Cookie included, which is how a path-scoped cookie reaches an /api/
+    # endpoint at all.
+    location = /_opik_authz {
+        internal;                       # not reachable from outside
+        proxy_pass http://backend/api/ai-observability/opik-authz;
+        include /etc/nginx/snippets/proxy-api.conf;
+        # The gate needs the caller's cookie and nothing else; a body would only be
+        # latency on every asset request.
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+    }
+
+    # Opik's own API, consumed by the Opik SDK and by Aura's own backend.
+    #
+    # An API sub-path is fine — unlike the SPA below, there are no absolute asset
+    # URLs to break. This is the endpoint the onboarding snippets point OPIK_URL_OVERRIDE at.
+    location ^~ /opik/api/ {
+        auth_request /_opik_authz;
+        proxy_pass http://opik_frontend;
+        include /etc/nginx/snippets/proxy-api.conf;
+        # Trace payloads (prompts and completions) are much larger than a normal API
+        # call. The Opik backend enforces its own JACKSON_MAX_STRING_LENGTH cap.
+        client_max_body_size 32m;
+    }
+
     # ── SPA fallback ─────────────────────────────────────────────────────────
     # BrowserRouter uses the HTML5 history API, so deep links like
     # /settings/users must return index.html rather than 404.
@@ -244,4 +292,63 @@ server {
     gzip_types text/plain text/css application/json application/javascript
                application/wasm image/svg+xml;
     gzip_min_length 1024;
+}
+
+# ── Opik UI, on its own port ─────────────────────────────────────────────────
+# WHY A SEPARATE PORT AND NOT /opik/ ON PORT 80.
+#
+# Comet's published frontend image is built with Vite base=/, so its index.html
+# references assets ABSOLUTELY: `src="/assets/index-BrFalIcj.js"`. Served under a
+# sub-path, the browser then requests /assets/... at Aura's origin, hits the SPA
+# fallback above, and gets Aura's index.html back — so the iframe renders AURA'S OWN
+# DASHBOARD. That is exactly the bug this block fixes, and it looks like success.
+#
+# Fixing it at the sub-path needs base=/opik/ baked in at BUILD time, which means
+# building Opik's frontend from source on every release: `npm ci` plus a Vite build
+# with an 8 GB heap. That failed outright on an 8 GiB podman machine (esbuild
+# "write EPIPE"), and it is the wrong dependency to put in a laptop release script.
+#
+# A dedicated port keeps the published image byte-for-byte and costs one listener.
+# The auth cookie still works: cookies are scoped by HOST, not by port, so the same
+# `aura_opik` cookie is presented here.
+server {
+    listen ${OPIK_UI_PORT};
+    server_name _;
+
+    # Same gate as port 80. Repeated rather than shared because `internal` locations
+    # do not cross server blocks — and this is the boundary that keeps a
+    # login-less Opik private, so it must exist in both.
+    location = /_opik_authz {
+        internal;
+        proxy_pass http://backend/api/ai-observability/opik-authz;
+        include /etc/nginx/snippets/proxy-api.conf;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+    }
+
+    # Unauthenticated callers get sent back to Aura rather than a bare 401 inside an
+    # iframe with no way out.
+    #
+    # ABSOLUTE, and explicitly onto the default port. A relative redirect keeps the
+    # CURRENT port, and this server block is the Opik one — so an expired session was
+    # being sent to <host>:8081/ai-observability, a path that only Opik answers on and
+    # which therefore 302s again. $host excludes the port ($http_host would keep it),
+    # so this lands on Aura's own listener.
+    location @opik_denied {
+        return 302 $scheme://$host/ai-observability?opik=session-expired;
+    }
+
+    location / {
+        auth_request /_opik_authz;
+        proxy_pass http://opik_frontend;
+        include /etc/nginx/snippets/proxy-api.conf;
+        client_max_body_size 32m;
+        error_page 401 = @opik_denied;
+    }
+
+    # Health check that does not require a session, so the ALB target group can pass.
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+    }
 }

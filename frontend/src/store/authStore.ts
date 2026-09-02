@@ -43,6 +43,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
+    // Drop the embedded-Opik cookie too. It is HttpOnly and path-scoped to /opik, so
+    // JS cannot clear it — only the server can, and it outlives the JWT otherwise.
+    // Open-source Opik has no login of its own, so a stale cookie on a shared machine
+    // leaves every prompt in the deployment readable by whoever sits down next.
+    //
+    // Fire-and-forget: logout must never block or fail on this.
+    void import('../api/aiObservability')
+      .then(m => m.closeOpikSession())
+      .catch(() => {})
+
     localStorage.removeItem('ov_token')
     localStorage.removeItem('ov_username')
     localStorage.removeItem('ov_userId')

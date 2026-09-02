@@ -3,42 +3,35 @@ import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Activity, MessagesSquare, Database, FlaskConical, FileCode2, Play,
-  Loader2, RefreshCw, Info, CheckCircle2, XCircle,
+  Loader2, RefreshCw, Info, CheckCircle2, XCircle, LayoutDashboard, Rocket,
+  Search, ThumbsDown, ThumbsUp, Waypoints, X,
 } from 'lucide-react'
 import * as api from '../api/aiObservability'
 import TraceWaterfall from '../components/aiobs/TraceWaterfall'
 import SpanDetail from '../components/aiobs/SpanDetail'
+import OverviewTab from './aiobs/OverviewTab'
+import OnboardingTab from './aiobs/OnboardingTab'
+import EvaluationsTab from './aiobs/EvaluationsTab'
+import OpikEmbed from './aiobs/OpikEmbed'
+// Hoisted out of this file: every new tab needs them, and duplicating the objects per
+// file is how they drift apart.
+import { btn, card, ghost, input, money } from './aiobs/styles'
 
-type Tab = 'traces' | 'threads' | 'datasets' | 'experiments' | 'prompts' | 'playground'
+type Tab = 'overview' | 'traces' | 'threads' | 'datasets' | 'experiments'
+  | 'evaluations' | 'prompts' | 'playground' | 'onboard' | 'opik'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  { id: 'overview', label: 'Overview', icon: <LayoutDashboard size={13} /> },
   { id: 'traces', label: 'Traces', icon: <Activity size={13} /> },
   { id: 'threads', label: 'Threads', icon: <MessagesSquare size={13} /> },
   { id: 'datasets', label: 'Datasets', icon: <Database size={13} /> },
   { id: 'experiments', label: 'Experiments', icon: <FlaskConical size={13} /> },
+  { id: 'evaluations', label: 'Evaluations', icon: <Waypoints size={13} /> },
   { id: 'prompts', label: 'Prompts', icon: <FileCode2 size={13} /> },
   { id: 'playground', label: 'Playground', icon: <Play size={13} /> },
+  { id: 'onboard', label: 'Onboard agent', icon: <Rocket size={13} /> },
+  { id: 'opik', label: 'More in Opik', icon: <Waypoints size={13} /> },
 ]
-
-const card: React.CSSProperties = {
-  background: 'var(--color-card)', border: '1px solid var(--color-border)',
-  borderRadius: 10, padding: 14,
-}
-const input: React.CSSProperties = {
-  background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-  borderRadius: 6, padding: '7px 10px', color: 'var(--color-text)',
-  fontSize: 12.5, width: '100%',
-}
-const btn: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 6, padding: '7px 13px',
-  borderRadius: 7, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
-  background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', color: '#fff',
-}
-const ghost: React.CSSProperties = {
-  ...btn, background: 'var(--color-surface)', color: 'var(--color-text)',
-  border: '1px solid var(--color-border)',
-}
-const money = (n?: number) => `$${(n ?? 0).toFixed(6)}`
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 12.5, color: 'var(--color-subtext)', padding: 16 }}>{children}</div>
@@ -46,7 +39,7 @@ function Empty({ children }: { children: React.ReactNode }) {
 
 export default function AIObservabilityPage() {
   const [params, setParams] = useSearchParams()
-  const tab = (params.get('tab') as Tab) || 'traces'
+  const tab = (params.get('tab') as Tab) || 'overview'
   const setTab = (id: Tab) => {
     const next = new URLSearchParams(params); next.set('tab', id); setParams(next)
   }
@@ -70,9 +63,15 @@ export default function AIObservabilityPage() {
         <div>
           <div className="section-label" style={{ marginBottom: 4 }}>AI Observability</div>
           <div style={{ fontSize: 12.5, color: 'var(--color-subtext)', maxWidth: 620, lineHeight: 1.6 }}>
-            Tracing and evaluation for LLM applications. Send traces from any
-            OpenTelemetry SDK to <code>/otlp/v1/traces</code> with a gateway key.
+            Tracing and evaluation for LLM applications. Instrument an agent from the{' '}
+            <strong>Onboard agent</strong> tab, or send traces from any OpenTelemetry SDK
+            to <code>/otlp/v1/traces</code> with a gateway key.
           </div>
+          {caps?.degraded && (
+            <div style={{ marginTop: 7, fontSize: 11.5, color: '#f59e0b' }}>
+              The {caps.store} trace store is unreachable — lists may appear empty.
+            </div>
+          )}
         </div>
         {projects.length > 0 && (
           <select
@@ -112,12 +111,17 @@ export default function AIObservabilityPage() {
 
       <motion.div key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.18 }}>
+        {tab === 'overview' && <OverviewTab project={project} />}
         {tab === 'traces' && <TracesTab project={project} caps={caps} />}
         {tab === 'threads' && <ThreadsTab project={project} />}
         {tab === 'datasets' && <DatasetsTab project={project} />}
         {tab === 'experiments' && <ExperimentsTab project={project} />}
+        {tab === 'evaluations' && <EvaluationsTab project={project} />}
         {tab === 'prompts' && <PromptsTab project={project} />}
         {tab === 'playground' && <PlaygroundTab />}
+        {tab === 'onboard' && <OnboardingTab project={project} />}
+        {tab === 'opik' && <OpikEmbed project={project}
+          opikUiUrl={caps?.opikUiUrl} opikEnabled={caps?.opikEnabled} />}
       </motion.div>
     </div>
   )
@@ -132,17 +136,41 @@ function TracesTab({ project, caps }: { project: string; caps: api.StoreCapabili
   const [openId, setOpenId] = useState('')
   const [spans, setSpans] = useState<api.SpanRow[]>([])
   const [span, setSpan] = useState<api.SpanRow | null>(null)
+  // `search` is the term typed; `applied` is what was actually sent. Kept apart so
+  // typing does not fire a ClickHouse full-text query per keystroke.
+  const [search, setSearch] = useState('')
+  const [applied, setApplied] = useState('')
+  const [rating, setRating] = useState('')
+
+  const canSearch = !!caps?.fullTextSearch
 
   const load = useCallback(() => {
     if (!project) return
     setLoading(true)
-    api.listTraces(project, { status })
+    // Only forwarded when the store can serve it — the API returns 400 rather than
+    // handing back an unfiltered list that looks filtered.
+    api.listTraces(project, { status, search: canSearch ? applied : '' })
       .then(r => setTraces(r.traces))
       .catch(() => setTraces([]))
       .finally(() => setLoading(false))
-  }, [project, status])
+  }, [project, status, applied, canSearch])
 
   useEffect(() => { load() }, [load])
+
+  /** Human feedback, stored wherever the active store keeps scores. */
+  const rate = async (t: api.TraceRow, value: number) => {
+    setRating(t.traceId)
+    try {
+      await api.setFeedback(t.traceId, project, { name: 'user_feedback', value })
+      // Reflect it immediately rather than refetching the whole list: under Opik the
+      // score is only readable after its own write settles.
+      setTraces(rows => rows.map(r => r.traceId === t.traceId
+        ? { ...r, onlineScores: [...(r.onlineScores ?? []).filter(s => s.name !== 'user_feedback'),
+            { name: 'user_feedback', value, passed: value >= 0.5 }] }
+        : r))
+    } catch { /* the row simply keeps its previous score */ }
+    finally { setRating('') }
+  }
 
   const open = async (t: api.TraceRow) => {
     setOpenId(t.traceId); setSpan(null)
@@ -163,6 +191,32 @@ function TracesTab({ project, caps }: { project: string; caps: api.StoreCapabili
           <option value="ok">OK</option>
           <option value="error">Error</option>
         </select>
+
+        {/* Rendered only when the store reports fullTextSearch. On DynamoDB there is
+            no index for it, so offering the box at all would be a lie. */}
+        {canSearch && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, width: 260 }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search size={12} style={{ position: 'absolute', left: 9, top: 9,
+                color: 'var(--color-muted)' }} />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') setApplied(search) }}
+                placeholder="Search prompts and completions…"
+                style={{ ...input, paddingLeft: 26 }}
+              />
+            </div>
+            {applied && (
+              <button type="button" title="Clear search"
+                onClick={() => { setSearch(''); setApplied('') }}
+                style={{ ...ghost, padding: '6px 8px' }}>
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        )}
+
         <button type="button" onClick={load} style={ghost}>
           <RefreshCw size={12} /> Refresh
         </button>
@@ -226,6 +280,41 @@ function TracesTab({ project, caps }: { project: string; caps: api.StoreCapabili
                 <div style={{ display: 'flex', gap: 12, padding: 12,
                   borderBottom: '1px solid var(--color-border)' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Human feedback sits next to the waterfall because this is where
+                        someone has just finished reading the trace and formed an
+                        opinion. It is stored as the same kind of object as a judge
+                        score, which is what makes the two comparable. */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7,
+                      marginBottom: 9 }}>
+                      <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
+                        Was this a good response?
+                      </span>
+                      <button type="button" onClick={() => rate(t, 1)}
+                        disabled={rating === t.traceId}
+                        style={{ ...ghost, padding: '3px 9px', fontSize: 11 }}>
+                        <ThumbsUp size={11} /> Good
+                      </button>
+                      <button type="button" onClick={() => rate(t, 0)}
+                        disabled={rating === t.traceId}
+                        style={{ ...ghost, padding: '3px 9px', fontSize: 11 }}>
+                        <ThumbsDown size={11} /> Bad
+                      </button>
+                      {rating === t.traceId &&
+                        <Loader2 size={12} className="animate-spin" style={{ color: '#818cf8' }} />}
+                      {caps && caps.feedbackScores === false && (
+                        <span style={{ fontSize: 10.5, color: 'var(--color-muted)' }}
+                          title="On DynamoDB scores are a JSON blob on the row, not a queryable field.">
+                          not filterable on {caps.store}
+                        </span>
+                      )}
+                      {t.otelTraceId && (
+                        <span style={{ fontSize: 10.5, color: 'var(--color-muted)',
+                          marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}
+                          title="The trace id your OpenTelemetry SDK generated. Opik mints its own, so this is kept in metadata for correlation.">
+                          otel: {t.otelTraceId.slice(0, 12)}…
+                        </span>
+                      )}
+                    </div>
                     <TraceWaterfall spans={spans} selectedId={span?.spanId ?? ''} onSelect={setSpan} />
                   </div>
                   <div style={{ width: 380, flexShrink: 0, borderLeft: '1px solid var(--color-border)' }}>
