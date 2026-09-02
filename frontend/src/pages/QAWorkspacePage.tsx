@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   FlaskConical, RefreshCw, Layers3, Activity, FileCheck,
   ChevronDown, ChevronUp, FileText, Server, ShieldCheck, ShieldX,
-  X, Download, Camera, Play,
+  X, Download, Camera, Play, Sparkles,
 } from 'lucide-react'
 import { qaApi, type TestRun, type TestArtifact } from '../api/qa'
 import { useAuthStore } from '../store/authStore'
@@ -230,7 +230,7 @@ function TestRunsTab({ suites, projectId, onViewArtifacts, onRefresh }: {
           No test runs yet
         </div>
         <div style={{ fontSize: 13, color: 'var(--color-muted)' }}>
-          Click "Execute Tests" on a project to get started.
+          Open a project, then press <strong>Start a run</strong> on its Results tab.
         </div>
       </motion.div>
     )
@@ -414,6 +414,15 @@ export default function QAWorkspacePage() {
   const [showExecute, setShowExecute]     = useState(false)
   const [executeProject, setExecuteProject] = useState<any>(null)
   const [activeArtifactRunId, setActiveArtifactRunId] = useState<string | null>(null)
+
+  // Default to the newest run when the Artifacts tab is opened with nothing selected.
+  // Making someone pick a run before showing them anything is a wasted click in the
+  // overwhelmingly common case — they want the run they just did.
+  useEffect(() => {
+    if (tab === 'artifacts' && !activeArtifactRunId && suites.length > 0) {
+      setActiveArtifactRunId(suites[0].testRunId)
+    }
+  }, [tab, activeArtifactRunId, suites])
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [suitesLoading, setSuitesLoading]     = useState(false)
   const [demoMode, setDemoMode]               = useState(false)
@@ -524,7 +533,6 @@ export default function QAWorkspacePage() {
             projects={projects}
             selectedProjectId={selectedProject?.projectId ?? null}
             onSelect={handleSelectProject}
-            onExecuteTests={handleExecuteTests}
           />
         )}
       </div>
@@ -589,12 +597,29 @@ export default function QAWorkspacePage() {
             {/* Tab content */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 24px' }}>
               {tab === 'runs' && (
-                <TestRunsTab
-                  suites={suites}
-                  projectId={selectedProject.projectId as string}
-                  onViewArtifacts={handleViewArtifacts}
-                  onRefresh={handleRefreshSuites}
-                />
+                <>
+                  {/* Test GENERATION, deliberately here and deliberately not called
+                      "execute". It asks an LLM to write test cases; it does not run
+                      anything. Sharing a verb with the run button is what made the
+                      two indistinguishable. */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+                    marginBottom: 12, flexWrap: 'wrap' }}>
+                    <button type="button" className="ov-btn ov-btn-ghost"
+                      onClick={() => handleExecuteTests(selectedProject)}>
+                      <Sparkles size={13} /> Generate test cases
+                    </button>
+                    <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>
+                      Writes new cases with an LLM. To execute them, use{' '}
+                      <strong>Start a run</strong> on the Results tab.
+                    </span>
+                  </div>
+                  <TestRunsTab
+                    suites={suites}
+                    projectId={selectedProject.projectId as string}
+                    onViewArtifacts={handleViewArtifacts}
+                    onRefresh={handleRefreshSuites}
+                  />
+                </>
               )}
 
               {tab === 'results' && (
@@ -614,7 +639,7 @@ export default function QAWorkspacePage() {
                   ) : !demoMode && suites.length > 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       <div style={{ fontSize: 13, color: 'var(--color-muted)' }}>
-                        Select a run to view its artifacts, or pick one below:
+                        Pick a run to view its screenshots and artifacts:
                       </div>
                       {suites.slice(0, 8).map(run => (
                         <button key={run.testRunId}

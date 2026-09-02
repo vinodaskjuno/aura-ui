@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Zap, Link2, Upload, GitBranch, RefreshCw, Play, Clock,
-  GitCommit, Globe, Shield, BookOpen, Ticket,
-  Server, Cloud, ShieldAlert, Database, Package,
+  GitCommit, Globe, Shield,
+  Server, Database, Package,
   MessageSquare, CheckCircle2, XCircle, AlertCircle,
   FolderOpen, ChevronRight, Activity,
 } from 'lucide-react'
@@ -18,18 +18,17 @@ import {
   updateSchedule,
   triggerSchedulerNow,
 } from '../api/ontologyUniverse'
+import { listMcpServers } from '../api/mcp'
+import type { McpServer } from '../api/mcp'
 import type { OntologyVersion, SchedulerJob } from '../api/ontologyUniverse'
 
-const MCP_SOURCES = [
-  { id: 'git',         label: 'Git / GitHub',  Icon: GitBranch },
-  { id: 'servicenow',  label: 'ServiceNow',     Icon: Ticket },
-  { id: 'wiz',         label: 'Wiz Security',   Icon: Shield },
-  { id: 'confluence',  label: 'Confluence',     Icon: BookOpen },
-  { id: 'jira',        label: 'Jira',           Icon: Ticket },
-  { id: 'terraform',   label: 'Terraform',      Icon: Server },
-  { id: 'aws',         label: 'AWS',            Icon: Cloud },
-  { id: 'snyk',        label: 'Snyk',           Icon: ShieldAlert },
-]
+// The MCP sources are whatever the user has actually connected — read at render time
+// from their `type="mcp"` connector rows.
+//
+// This used to be a hardcoded list of eight names (git, servicenow, wiz, ...) which
+// the backend then ignored entirely: `sources` was accepted by /api/ontology/load/mcp
+// and never passed to the loader, and the data came from a random.seed() generator. The
+// tick-boxes were decorative and the "MCP" label was aspirational.
 
 type ActiveTab = 'mcp' | 'api' | 'file' | 'repos'
 
@@ -52,8 +51,13 @@ export default function OntologyDataLoaderPage() {
   const [error, setError] = useState('')
 
   // MCP state
-  const [mcpSources, setMcpSources] = useState<string[]>(['git'])
+  const [mcpSources, setMcpSources] = useState<string[]>([])
   const [mcpNotes, setMcpNotes] = useState('')
+  const [mcpServers, setMcpServers] = useState<McpServer[]>([])
+  const [mcpLoadingServers, setMcpLoadingServers] = useState(true)
+  // What the last load could not map. Reported rather than swallowed: a loader that
+  // quietly discards half its input is worse than one that fails loudly.
+  const [mcpSkipped, setMcpSkipped] = useState<{ server: string; nodes: number; skipped: number }[]>([])
 
   // API state
   const [apiUrl, setApiUrl] = useState('')
@@ -91,12 +95,25 @@ export default function OntologyDataLoaderPage() {
     setTimeout(() => isError ? setError('') : setStatusMsg(''), 4000)
   }
 
+  useEffect(() => {
+    listMcpServers()
+      .then(d => {
+        setMcpServers(d.servers)
+        // Preselect the reachable ones: the common case is "load everything I have".
+        setMcpSources(d.servers.filter(s => s.status === 'connected').map(s => s.connectorId))
+      })
+      .catch(() => setMcpServers([]))
+      .finally(() => setMcpLoadingServers(false))
+  }, [])
+
   const handleMcpLoad = async () => {
-    if (!mcpSources.length) return toast('Select at least one source', true)
-    setLoading(true); setError('')
+    if (!mcpSources.length) return toast('Select at least one MCP server', true)
+    setLoading(true); setError(''); setMcpSkipped([])
     try {
       const r = await loadViaMcp(mcpSources, undefined, mcpNotes)
-      toast(`Loaded ${r.nodesAdded} nodes via MCP (${r.versionNumber})`)
+      setMcpSkipped(r.sources ?? [])
+      const skipped = r.skipped ? `, ${r.skipped} records skipped` : ''
+      toast(`Loaded ${r.nodesAdded} nodes and ${r.relsAdded ?? 0} relationships${skipped} (${r.versionNumber})`)
       refresh()
     } catch (e: unknown) { toast(String(e), true) }
     finally { setLoading(false) }
@@ -269,30 +286,88 @@ export default function OntologyDataLoaderPage() {
         {activeTab === 'mcp' && (
           <div>
             <p style={{ margin: '0 0 18px', fontSize: 13, color: sub }}>
-              Select data sources to ingest via MCP connectors. Each run creates a versioned snapshot.
+              Pull entities from your connected MCP servers into the knowledge graph.
+              Each run creates a versioned snapshot you can roll back.
             </p>
+
+            {mcpLoadingServers && (
+              <p style={{ margin: '0 0 18px', fontSize: 13, color: sub }}>
+                Discovering connected servers…
+              </p>
+            )}
+
+            {!mcpLoadingServers && mcpServers.some(s => s.status !== 'connected') && (
+              <p style={{ margin: '0 0 14px', fontSize: 12.5, color: '#f59e0b', lineHeight: 1.7 }}>
+                {mcpServers.filter(s => s.status !== 'connected').length} of{' '}
+                {mcpServers.length} connectors cannot be loaded from — hover each one for
+                the reason. They are listed so this screen matches the{' '}
+                <a href="/connectors" style={{ color: acc }}>Connectors</a> page.
+              </p>
+            )}
+
+            {!mcpLoadingServers && mcpServers.length === 0 && (
+              <p style={{ margin: '0 0 18px', fontSize: 13, color: sub, lineHeight: 1.7 }}>
+                No MCP servers connected. Add one on the{' '}
+                <a href="/connectors" style={{ color: acc }}>Connectors</a> page (type{' '}
+                <strong>MCP</strong>), then see what it exposes under{' '}
+                <a href="/mcp" style={{ color: acc }}>MCP Servers</a>.
+              </p>
+            )}
+
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
-              {MCP_SOURCES.map(({ id, label, Icon }) => {
-                const sel = mcpSources.includes(id)
+              {mcpServers.map(server => {
+                const sel = mcpSources.includes(server.connectorId)
+                const down = server.status !== 'connected'
+                // Unusable servers are shown, not hidden. A connector that appears on
+                // the Connectors page and then silently is not here leaves the user
+                // comparing two lists and guessing which one vanished.
+                const why = server.status === 'unconfigured'
+                  ? 'No endpoint URL set — finish it on the Connectors page'
+                  : server.status === 'failed'
+                    ? 'This server did not answer'
+                    : `${server.tools.length} tools — ${server.url}`
                 return (
                   <button
-                    key={id}
-                    onClick={() => toggleSource(id)}
+                    key={server.connectorId}
+                    onClick={() => !down && toggleSource(server.connectorId)}
+                    disabled={down}
+                    title={why}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 7,
-                      padding: '8px 16px', borderRadius: 9, fontSize: 13, cursor: 'pointer',
+                      padding: '8px 16px', borderRadius: 9, fontSize: 13,
+                      cursor: down ? 'not-allowed' : 'pointer', opacity: down ? 0.45 : 1,
                       background: sel ? accBg : card,
                       border: `1px solid ${sel ? accBorder : cardBorder}`,
                       color: sel ? acc : text, fontWeight: sel ? 600 : 400,
                       transition: 'all 0.15s',
                     }}
                   >
-                    <Icon size={13} />
-                    {label}
+                    <Server size={13} />
+                    {server.name}
+                    <span style={{ fontSize: 11, color: sub }}>
+                      {server.status === 'unconfigured' ? 'not finished'
+                        : server.status === 'failed' ? 'unreachable'
+                          : `${server.tools.length} tools`}
+                    </span>
                   </button>
                 )
               })}
             </div>
+
+            {mcpSkipped.length > 0 && (
+              <div style={{ marginBottom: 18, fontSize: 12.5, color: sub, lineHeight: 1.7 }}>
+                {mcpSkipped.map(s => (
+                  <div key={s.server}>
+                    <strong style={{ color: text }}>{s.server}</strong>: {s.nodes} nodes
+                    {s.skipped > 0 && (
+                      <span style={{ color: '#f59e0b' }}>
+                        {' '}— {s.skipped} records skipped (no recognised entity type)
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             <textarea
               placeholder="Notes (optional)..."
               value={mcpNotes}
@@ -301,7 +376,7 @@ export default function OntologyDataLoaderPage() {
             />
             <button style={btnPrimary} onClick={handleMcpLoad} disabled={loading}>
               <Zap size={14} />
-              {loading ? 'Loading…' : `Load Now (${mcpSources.length} source${mcpSources.length !== 1 ? 's' : ''})`}
+              {loading ? 'Loading…' : `Load Now (${mcpSources.length} server${mcpSources.length !== 1 ? 's' : ''})`}
             </button>
           </div>
         )}

@@ -157,79 +157,30 @@ export default function TestExecutionModal({
     setPhaseTimes(t => ({ ...t, [p]: elapsed() }))
   }, [elapsed])
 
-  // ── Container run WebSocket ─────────────────────────────────────────────────
+  // ── Container run ───────────────────────────────────────────────────────────
+  //
+  // This used to open `/api/qa/ws/container-run`, which DOES NOT EXIST in the backend —
+  // it was removed with the per-run ECS provisioning path and the socket call was left
+  // behind. It was reachable whenever `playwright_ui` was selected with a non-empty app
+  // URL, and it failed on connect, which `ws.onclose` then reported as a failed run.
+  //
+  // Browser runs now go through the queue: POST /api/qa/runs, executed by a self-hosted
+  // runner, watched in the Results tab. Generation still completes here; execution is
+  // handed off rather than faked.
   const startContainerRun = useCallback((runId: string) => {
-    if (!appUrl.trim()) {
-      // No app URL → just mark complete
-      setPhase('complete')
-      recordPhaseTime('complete')
-      setFinalRunId(runId)
-      onComplete(runId)
-      return
+    setPhase('complete')
+    recordPhaseTime('complete')
+    setFinalRunId(runId)
+    onComplete(runId)
+
+    if (appUrl.trim()) {
+      // Best-effort: queue the browser run the user asked for. A failure here must not
+      // fail the generation that already succeeded.
+      qaApi.enqueueRun(project.projectId as string, appUrl.trim())
+        .catch(() => {})
     }
+  }, [appUrl, project.projectId, onComplete, recordPhaseTime])
 
-    setPhase('scaling_up')
-    recordPhaseTime('scaling_up')
-
-    const ws = new WebSocket(`${wsUrl}/api/qa/ws/container-run`)
-    runWsRef.current = ws
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({
-        token,
-        run_id: runId,
-        project_id: project.projectId as string,
-        app_url: appUrl.trim(),
-      }))
-    }
-
-    ws.onmessage = (e: MessageEvent<string>) => {
-      const ev = JSON.parse(e.data) as Record<string, unknown>
-      if (ev.message) addLog(ev.message as string)
-
-      switch (ev.type as string) {
-        case 'scale_up':
-          setPhase('scaling_up')
-          recordPhaseTime('scaling_up')
-          break
-        case 'setup':
-          setPhase('setup')
-          recordPhaseTime('setup')
-          break
-        case 'running':
-          setPhase('running')
-          recordPhaseTime('running')
-          break
-        case 'upload':
-          setPhase('upload')
-          recordPhaseTime('upload')
-          break
-        case 'scale_down':
-          setPhase('scaling_down')
-          recordPhaseTime('scaling_down')
-          break
-        case 'done':
-          setPhase('complete')
-          recordPhaseTime('complete')
-          setFinalRunId(runId)
-          onComplete(runId)
-          break
-        case 'error':
-          setPhase('error')
-          setExecError((ev.message as string) ?? 'Container run failed')
-          break
-      }
-    }
-
-    ws.onerror = () => {
-      setPhase('error')
-      setExecError('Container WebSocket connection failed')
-    }
-    ws.onclose = () => {
-      // If still running, mark error
-      setPhase(p => (p === 'complete' || p === 'error') ? p : 'error')
-    }
-  }, [wsUrl, token, project, appUrl, addLog, recordPhaseTime, onComplete])
 
   // ── Generate WebSocket ──────────────────────────────────────────────────────
   const startGenerate = useCallback(() => {

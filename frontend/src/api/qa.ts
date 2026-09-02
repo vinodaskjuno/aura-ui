@@ -107,14 +107,42 @@ export interface RunReport {
   exploratory:     boolean
 }
 
-/** What THIS backend can do — the UI disables the run button with a reason rather
- *  than offering one that fails, which is what the retired ECS path did. */
+/**
+ * Whether a run can execute AT ALL — either here, or on a connected self-hosted runner.
+ *
+ * `podman`/`browser`/`local` describe THIS backend; in a deployed Fargate task they are
+ * always false, which is why they alone can no longer gate the button. `runners` is the
+ * other way it can be true: an agent on a developer machine that has claimed and
+ * heartbeated recently.
+ */
 export interface QaCapabilities {
   canRun:  boolean
   podman:  boolean
   browser: boolean
+  /** This backend can execute a run itself (local development). */
+  local:   boolean
+  /** Self-hosted runners that reported within the last ~90s. */
+  runners: { name: string; lastSeen: string }[]
   reason:  string
   clouds:  { name: string; port: number; image: string }[]
+}
+
+/** A run that has been queued but has not finished. S3 cannot see these at all —
+ *  report.json is written last and its presence is the done signal. */
+export interface QaActiveRun {
+  runId:     string
+  status:    'queued' | 'claimed' | 'running' | string
+  phase:     string
+  runner:    string
+  appUrl:    string
+  createdAt: string
+  updatedAt: string
+  /** Live counts from the runner's heartbeat, so a long run shows movement rather
+   *  than sitting on the word "running". */
+  totalPassed?:  number
+  totalFailed?:  number
+  totalSkipped?: number
+  totalCases?:   number
 }
 
 export interface TestArtifact {
@@ -142,8 +170,31 @@ export const qaApi = {
   capabilities: () => client.get<QaCapabilities>('/api/qa/capabilities'),
   runLocal: (data: { project_id: string; app_url: string; run_id?: string; exploratory?: boolean }) =>
     client.post<RunReport>('/api/qa/run/local', data),
+  /** Stored runs from S3. A bare array — see the note in the backend handler. */
   listResults: (projectId: string) =>
     client.get<RunReport[]>(`/api/qa/results/${projectId}`),
+
+  /**
+   * Runs that are queued or executing.
+   *
+   * Its own endpoint rather than a field on listResults, because widening that
+   * response broke any browser holding the previous bundle — an object arrived where
+   * an array was expected and the run list crashed with "n.map is not a function".
+   * An older client never calls this one at all.
+   */
+  activeRuns: (projectId: string) =>
+    client.get<{ active: QaActiveRun[] }>(`/api/qa/active/${projectId}`),
+
+  /**
+   * Queue a run. Returns as soon as it is queued — nothing has executed yet.
+   *
+   * A self-hosted runner claims it and executes it elsewhere, so this deliberately
+   * does not wait: the run outlives the browser tab, which the WebSocket-driven local
+   * run does not.
+   */
+  enqueueRun: (projectId: string, appUrl = '', exploratory = false) =>
+    client.post<{ runId: string; projectId: string; status: string }>(
+      '/api/qa/runs', { project_id: projectId, app_url: appUrl, exploratory }),
   getResult: (projectId: string, runId: string) =>
     client.get<{ report: RunReport; steps: RunStep[] }>(`/api/qa/results/${projectId}/${runId}`),
 }

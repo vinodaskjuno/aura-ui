@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { applyChange, cloneRepo, discardChange } from '../api/gitOps'
+import { listMcpServers } from '../api/mcp'
 import {
   Bot, X, Loader2, Send, RefreshCw, BarChart3, Shield, Server,
   Users, Layers, Clock, Trash2, MessageSquare, GitBranch, Plus, ChevronRight,
@@ -588,6 +589,10 @@ export default function DevChatbotPage() {
     { ok: false, error: false, message: '' })
   const [input, setInput] = useState('')
   const [isConnected, setIsConnected] = useState(false)
+  // Connected MCP servers. Their tools are injected into every turn server-side, so
+  // this chip exists purely so the user can SEE that before a tool fires — otherwise
+  // the only evidence is a tool call that may never happen.
+  const [mcpServers, setMcpServers] = useState<{ name: string; tools: number }[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
 
   // Model selection
@@ -724,6 +729,14 @@ export default function DevChatbotPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    listMcpServers()
+      .then(d => setMcpServers(
+        d.servers.filter(s => s.status === 'connected')
+          .map(s => ({ name: s.name, tools: s.tools.length }))))
+      .catch(() => setMcpServers([]))     // never block chat on this
+  }, [])
 
   // ── WebSocket (connects when entering chat phase) ───────────────────────────
   useEffect(() => {
@@ -1511,6 +1524,22 @@ export default function DevChatbotPage() {
                     fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '4px',
                     background: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.3)',
                   }}>✦ ontology context</span>
+                </>
+              )}
+              {mcpServers.length > 0 && (
+                <>
+                  <span style={{ color: 'var(--color-muted)', fontSize: '10px' }}>·</span>
+                  <span
+                    title={mcpServers.map(s => `${s.name} (${s.tools} tools)`).join('\n')}
+                    style={{
+                      fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '4px',
+                      background: 'rgba(16,185,129,0.15)', color: '#10b981',
+                      border: '1px solid rgba(16,185,129,0.3)', cursor: 'default',
+                    }}>
+                    ⚡ {mcpServers.length} MCP server{mcpServers.length === 1 ? '' : 's'}
+                    {' · '}
+                    {mcpServers.reduce((n, s) => n + s.tools, 0)} tools
+                  </span>
                 </>
               )}
               <span style={{ color: 'var(--color-muted)', fontSize: '10px' }}>·</span>

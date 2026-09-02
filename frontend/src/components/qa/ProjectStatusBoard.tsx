@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import {
   FolderOpen, Download, FolderGit2, ScanSearch, ScanLine, Code2,
   GitPullRequest, FlaskConical, CheckCircle2, AlertCircle,
-  CirclePlay, BarChart3, Search, Filter, GitFork,
+  BarChart3, Search, Filter, GitFork,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -58,11 +58,10 @@ export interface ProjectStatusBoardProps {
   projects: any[]
   selectedProjectId: string | null
   onSelect: (project: any) => void
-  onExecuteTests: (project: any) => void
 }
 
 export default function ProjectStatusBoard({
-  projects, selectedProjectId, onSelect, onExecuteTests,
+  projects, selectedProjectId, onSelect,
 }: ProjectStatusBoardProps) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -150,7 +149,6 @@ export default function ProjectStatusBoard({
                 project={project}
                 isSelected={project.projectId === selectedProjectId}
                 onSelect={onSelect}
-                onExecuteTests={onExecuteTests}
                 animDelay={i * 0.035}
               />
             ))}
@@ -166,11 +164,10 @@ interface ProjectCardProps {
   project: any
   isSelected: boolean
   onSelect: (p: any) => void
-  onExecuteTests: (p: any) => void
   animDelay: number
 }
 
-function ProjectCard({ project, isSelected, onSelect, onExecuteTests, animDelay }: ProjectCardProps) {
+function ProjectCard({ project, isSelected, onSelect, animDelay }: ProjectCardProps) {
   const status = (project.status as string | undefined) ?? 'CREATED'
   const cfg = QA_STATUS_CONFIG[status] ?? FALLBACK_STATUS
   const StatusIcon = cfg.icon
@@ -277,31 +274,29 @@ function ProjectCard({ project, isSelected, onSelect, onExecuteTests, animDelay 
           </div>
         )}
 
-        {/* Action buttons */}
+        {/* ONE action per card, and it navigates rather than executing.
+            
+            There used to be an "Execute Tests" button on every card AND a "Start a
+            run" in the Results tab. Two controls that both read as "run the tests"
+            but did different things: this one opened an LLM test-GENERATION modal,
+            the other actually executed a run. Two primary actions competing for the
+            same intent is how a user ends up not trusting either.
+            
+            Now the card's job is selection — which the whole card already does — and
+            running lives in exactly one place, next to the results it produces. */}
         <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-            <button
-              onClick={e => { e.stopPropagation(); onExecuteTests(project) }}
-              style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)',
-                color: '#10b981', transition: 'all 0.15s',
-              }}>
-              <CirclePlay size={12} /> Execute Tests
-            </button>
-            {status === 'TESTING_COMPLETE' && (
-              <button
-                onClick={e => { e.stopPropagation(); onSelect(project) }}
-                style={{
-                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                  padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                  background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.35)',
-                  color: '#14b8a6', transition: 'all 0.15s',
-                }}>
-                <BarChart3 size={12} /> View Results
-              </button>
-            )}
-          </div>
+          <button
+            onClick={e => { e.stopPropagation(); onSelect(project) }}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              background: isSelected ? 'rgba(20,184,166,0.18)' : 'rgba(20,184,166,0.10)',
+              border: '1px solid rgba(20,184,166,0.35)',
+              color: '#14b8a6', transition: 'all 0.15s',
+            }}>
+            <BarChart3 size={12} /> {isSelected ? 'Selected' : 'Open'}
+          </button>
+        </div>
       </div>
     </motion.div>
   )

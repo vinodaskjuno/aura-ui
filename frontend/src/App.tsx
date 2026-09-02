@@ -5,6 +5,7 @@ import RoleProtectedRoute from './components/layout/RoleProtectedRoute'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ConnectorsPage from './pages/ConnectorsPage'
+import MCPServersPage from './pages/MCPServersPage'
 import AdvisorPage from './pages/AdvisorPage'
 import SettingsPage from './pages/SettingsPage'
 import UploadPage from './pages/UploadPage'
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="/ai-observability" element={<RoleProtectedRoute permission="dev_workspace"><AIObservabilityPage /></RoleProtectedRoute>} />
           <Route path="/ontology"       element={<RoleProtectedRoute permission="ontology"><OntologyVisualizerPage /></RoleProtectedRoute>} />
           <Route path="/connectors"     element={<RoleProtectedRoute permission="connectors"><ConnectorsPage /></RoleProtectedRoute>} />
+          <Route path="/mcp"            element={<RoleProtectedRoute permission="connectors"><MCPServersPage /></RoleProtectedRoute>} />
           <Route path="/advisor"        element={<RoleProtectedRoute permission="advisor"><AdvisorPage /></RoleProtectedRoute>} />
           <Route path="/settings"       element={<RoleProtectedRoute permission="settings"><SettingsPage /></RoleProtectedRoute>} />
           <Route path="/settings/users" element={<RoleProtectedRoute permission="user_management"><UserManagementPage /></RoleProtectedRoute>} />

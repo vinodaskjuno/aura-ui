@@ -4,7 +4,7 @@ import {
   LayoutDashboard, MessageSquare, Settings, Plug2,
   LogOut, FolderUp, ScrollText, Activity, Orbit,
   TestTube2, Users, ShieldCheck, BrainCircuit, CalendarClock, Bot, Database,
-  ScanSearch, Radar,
+  ScanSearch, Radar, Server,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { LogoMark } from '../ui/Logo'
@@ -43,6 +43,7 @@ const ALL_NAV_GROUPS: NavGroup[] = [
     label: 'DATA',
     items: [
       { to: '/connectors',  label: 'Connectors',          icon: Plug2,           permission: 'connectors' },
+      { to: '/mcp',         label: 'MCP Servers',         icon: Server,          permission: 'connectors' },
       { to: '/scheduler',   label: 'Scheduler',           icon: CalendarClock,   permission: 'scheduler' },
       { to: '/upload',      label: 'Upload',              icon: FolderUp,        permission: 'upload' },
       { to: '/logs',        label: 'Logs',                icon: ScrollText,      permission: 'logs' },
