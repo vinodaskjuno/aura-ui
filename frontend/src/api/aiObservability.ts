@@ -25,6 +25,12 @@ export interface StoreCapabilities {
    * inlined at build time and would pin one image to one environment.
    */
   opikUiUrl?: string
+  /**
+   * Whether the demo agents are deployed here. Same reasoning as opikUiUrl: only the
+   * infrastructure knows, so the UI is told rather than guessing — false hides the
+   * trigger instead of offering a button that would 503.
+   */
+  demoAgentsEnabled?: boolean
   note: string
 }
 
@@ -237,6 +243,39 @@ export const listOnboardingStyles = () =>
 /** Provisions (or reuses) a gateway key and returns copy-paste instrumentation. */
 export const onboard = async (body: { style: string; projectName: string }) =>
   (await client.post(`${BASE}/onboarding`, body)).data as Onboarding
+
+// ── Demo agents ──────────────────────────────────────────────────────────────
+// Four standalone agents producing continuous traffic so these screens are never
+// empty. The trigger makes them produce traces NOW, which is the difference between
+// telling an audience that traffic arrives every few minutes and showing them rows
+// appearing on a refresh.
+
+export interface DemoRunResult {
+  triggered: string[]
+  count: number
+  elapsedMs: number
+  projects: string[]
+}
+
+export const DEMO_AGENTS = [
+  { id: 'all', label: 'All four' },
+  { id: 'rag', label: 'Support RAG' },
+  { id: 'tools', label: 'Ops copilot (tools)' },
+  { id: 'chat', label: 'Chat concierge (threads)' },
+  { id: 'flaky', label: 'Flaky summariser (errors)' },
+] as const
+
+/**
+ * Resolves only once the traces are queryable.
+ *
+ * The backend waits for the agents' SDK flush before answering, so the caller can
+ * refresh immediately and actually see the rows — a button that returns before its
+ * effect is visible is worse than no button. That also makes it slow: a burst of
+ * several runs is several real model calls.
+ */
+export const runDemoAgents = async (agent = 'all', count = 1) =>
+  (await client.post(`${BASE}/demo/run`, null, { params: { agent, count } }))
+    .data as DemoRunResult
 
 // ── Embedded Opik ────────────────────────────────────────────────────────────
 // Opening the embedded UI is a browser NAVIGATION, which cannot carry an

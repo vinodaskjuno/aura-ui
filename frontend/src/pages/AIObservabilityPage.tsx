@@ -119,7 +119,7 @@ export default function AIObservabilityPage() {
         {tab === 'evaluations' && <EvaluationsTab project={project} />}
         {tab === 'prompts' && <PromptsTab project={project} />}
         {tab === 'playground' && <PlaygroundTab />}
-        {tab === 'onboard' && <OnboardingTab project={project} />}
+        {tab === 'onboard' && <OnboardingTab project={project} caps={caps} />}
         {tab === 'opik' && <OpikEmbed project={project}
           opikUiUrl={caps?.opikUiUrl} opikEnabled={caps?.opikEnabled} />}
       </motion.div>

@@ -273,7 +273,15 @@ server {
     # URLs to break. This is the endpoint the onboarding snippets point OPIK_URL_OVERRIDE at.
     location ^~ /opik/api/ {
         auth_request /_opik_authz;
-        proxy_pass http://opik_frontend;
+        # NOTE THE TRAILING /api/ — it is load-bearing.
+        #
+        # With a URI on proxy_pass, nginx replaces the matched location prefix, so
+        # /opik/api/v1/private/traces/batch reaches Opik as /api/v1/private/traces/batch.
+        # Without it the full path is forwarded verbatim, and Opik's own nginx has no
+        # /opik/ location — the request falls through to its SPA fallback and the Opik
+        # SDK gets 200 OK with a page of HTML. Traces then vanish with no error
+        # anywhere: the SDK reports success, and the project stays empty.
+        proxy_pass http://opik_frontend/api/;
         include /etc/nginx/snippets/proxy-api.conf;
         # Trace payloads (prompts and completions) are much larger than a normal API
         # call. The Opik backend enforces its own JACKSON_MAX_STRING_LENGTH cap.

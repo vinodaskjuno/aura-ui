@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  AlertTriangle, Check, Copy, KeyRound, Loader2, Rocket, ShieldCheck,
+  AlertTriangle, Check, Copy, KeyRound, Loader2, PlayCircle, Rocket, ShieldCheck,
 } from 'lucide-react'
 import * as api from '../../api/aiObservability'
 import { btn, card, ghost, input, mono } from './styles'
@@ -64,7 +64,90 @@ function CodeBlock({ snippet }: { snippet: api.OnboardingSnippet }) {
   )
 }
 
-export default function OnboardingTab({ project }: { project: string }) {
+/**
+ * Trigger the demo agents.
+ *
+ * Four standalone agents run continuously on their own service, so these screens are
+ * never empty. This makes them produce traces NOW — which is the difference between
+ * telling someone that traffic arrives every few minutes and showing them rows appear.
+ *
+ * It sits on THIS tab on purpose: the snippet above is literally the code those agents
+ * run, so "here is how you instrument an agent" and "here is one doing it" are one
+ * screen rather than two.
+ *
+ * Rendered only when the API says the service exists. An always-visible button that
+ * 503s in every environment but one is worse than no button.
+ */
+function DemoTrigger() {
+  const [agent, setAgent] = useState('all')
+  const [count, setCount] = useState(1)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<api.DemoRunResult | null>(null)
+  const [err, setErr] = useState('')
+
+  const trigger = () => {
+    setBusy(true); setErr(''); setResult(null)
+    api.runDemoAgents(agent, count)
+      .then(setResult)
+      .catch(e => setErr(e?.response?.data?.detail
+        || 'Could not reach the demo agents. Check the demo-agents service is running.'))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: 11 }}>
+      <div className="section-label">Demo agents</div>
+      <div style={{ fontSize: 12.5, color: 'var(--color-subtext)', lineHeight: 1.65 }}>
+        Four agents are onboarded here already — retrieval, tool-calling, multi-turn
+        chat, and one that fails on purpose. They run continuously; this makes them run
+        right now. Traces are queryable by the time this returns, so the Traces tab
+        shows them on the next refresh.
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 210 }}>
+          <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>Agent</span>
+          <select value={agent} onChange={e => setAgent(e.target.value)} style={input}>
+            {api.DEMO_AGENTS.map(a => (
+              <option key={a.id} value={a.id}>{a.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 100 }}>
+          <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>Runs</span>
+          {/* Capped at 5 server-side too. A burst is real model calls, and the request
+              waits for all of them — five rounds across four agents is already ~100s. */}
+          <input type="number" min={1} max={5} value={count} style={input}
+            onChange={e => setCount(Math.min(5, Math.max(1, Number(e.target.value) || 1)))} />
+        </label>
+
+        <button type="button" onClick={trigger} style={btn} disabled={busy}>
+          {busy ? <Loader2 size={12} className="animate-spin" /> : <PlayCircle size={12} />}
+          {busy ? 'Running…' : 'Run now'}
+        </button>
+      </div>
+
+      {busy && (
+        <div style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>
+          Waiting for real model calls and the trace flush — usually a few seconds per run.
+        </div>
+      )}
+      {err && <div style={{ fontSize: 12, color: '#ef4444' }}>{err}</div>}
+      {result && (
+        <div style={{ fontSize: 12, color: 'var(--color-subtext)', lineHeight: 1.6 }}>
+          Ran <strong style={{ color: 'var(--color-text)' }}>{result.triggered.join(', ')}</strong>
+          {' '}×{result.count} in {(result.elapsedMs / 1000).toFixed(1)}s. New traces are in{' '}
+          {result.projects.join(', ')}.
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function OnboardingTab(
+  { project, caps }: { project: string; caps: api.StoreCapabilities | null },
+) {
   const [styles, setStyles] = useState<string[]>([])
   const [style, setStyle] = useState('opik-sdk')
   const [projectName, setProjectName] = useState(project || 'my-agent')
@@ -88,6 +171,8 @@ export default function OnboardingTab({ project }: { project: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {caps?.demoAgentsEnabled && <DemoTrigger />}
+
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: 11 }}>
         <div className="section-label">Instrument an agent</div>
         <div style={{ fontSize: 12.5, color: 'var(--color-subtext)', lineHeight: 1.65 }}>
