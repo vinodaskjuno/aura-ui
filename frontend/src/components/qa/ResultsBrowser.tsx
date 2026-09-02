@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Loader2, CheckCircle2, XCircle, AlertTriangle, ChevronLeft, Cloud, Clock, User,
-  Play, RefreshCw,
+  RefreshCw,
 } from 'lucide-react'
-import { qaApi, type QaActiveRun, type QaCapabilities, type RunReport, type RunStep }
+import { qaApi, type QaActiveRun, type RunReport, type RunStep }
   from '../../api/qa'
-import LocalRunView from './LocalRunView'
 import RunProgress from './RunProgress'
 import StepTimeline from './StepTimeline'
 
@@ -49,19 +48,10 @@ export default function ResultsBrowser({ projectId }: { projectId: string }) {
   const [error, setError] = useState('')
   const [open, setOpen] = useState<{ report: RunReport; steps: RunStep[] } | null>(null)
   const [openLoading, setOpenLoading] = useState(false)
-  const [starting, setStarting] = useState(false)
-  const [caps, setCaps] = useState<QaCapabilities | null>(null)
   // Runs that have been queued but not finished. These cannot come from S3: report.json
   // is written last and its presence IS the done signal, so an unfinished run is
   // invisible there. Without this the Start button appeared to do nothing for minutes.
   const [active, setActive] = useState<QaActiveRun[]>([])
-  const [queueing, setQueueing] = useState(false)
-  // Where to point a REMOTE run. The local path has this field already
-  // (LocalRunView), and the queue path shipped without it — so a remote run could only
-  // ever try to start the project's own app from a working copy on the runner, and a
-  // project not cloned there failed with "No working copy found" and no way to say
-  // "test this URL instead".
-  const [remoteUrl, setRemoteUrl] = useState('')
 
   const load = useCallback(async () => {
     if (!projectId) { setRuns([]); setActive([]); setLoading(false); return }
@@ -96,13 +86,6 @@ export default function ResultsBrowser({ projectId }: { projectId: string }) {
     const t = setInterval(load, 2500)
     return () => clearInterval(t)
   }, [active.length, load])
-
-  // Whether a run can be STARTED here is separate from whether results can be READ:
-  // evidence lives in shared S3, so this list works everywhere, but execution needs
-  // podman and a browser.
-  useEffect(() => {
-    qaApi.capabilities().then(r => setCaps(r.data)).catch(() => setCaps(null))
-  }, [])
 
   const openRun = async (runId: string) => {
     setOpenLoading(true)
@@ -188,65 +171,25 @@ export default function ResultsBrowser({ projectId }: { projectId: string }) {
     )
   }
 
-  const canRun = caps?.canRun ?? false
-  // Two ways a run can execute, and they need different UI. Locally the WebSocket view
-  // streams it live. Remotely it is queued for a self-hosted runner, so the only honest
-  // thing to show is the queue state — the run is not happening in this tab.
-  const runsHere = caps?.local ?? false
-
-  const start = async () => {
-    if (runsHere) { setStarting(true); return }
-    setQueueing(true)
-    try {
-      await qaApi.enqueueRun(projectId, remoteUrl.trim())
-      await load()
-    } catch {
-      setError('Could not queue the run.')
-    } finally { setQueueing(false) }
-  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {/* The entry point for a FIRST run. Without this the only way to start one was
           to open an existing run's detail drawer — which a project with no runs does
           not have. */}
+      {/* No run control here any more. Running starts on the project card, and the
+          launcher modal shows the whole lifecycle — queue, prepare, execute, results —
+          in one place. A second entry point here is what made two controls read as
+          the same action. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
         marginBottom: 4 }}>
-        <button type="button" className="ov-btn ov-btn-primary"
-          disabled={!canRun || !projectId || queueing}
-          title={canRun ? 'Start a test run' : (caps?.reason || 'Checking…')}
-          onClick={start}
-          style={{ opacity: canRun ? 1 : 0.5, cursor: canRun ? 'pointer' : 'not-allowed' }}>
-          {queueing ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-          Start a run
-        </button>
-        {/* Only for the remote path — the local one has this field in LocalRunView. */}
-        {!runsHere && (
-          <input value={remoteUrl} onChange={e => setRemoteUrl(e.target.value)}
-            disabled={queueing}
-            placeholder="Leave empty to start this project's own app on the runner"
-            title="A URL that is already serving, or empty to build and start the project's own app from its working copy on the runner machine"
-            style={{ flex: '1 1 300px', minWidth: 240, background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)', borderRadius: 7,
-              padding: '7px 10px', color: 'var(--color-text)', fontSize: 12.5,
-              fontFamily: 'var(--font-mono)' }} />
-        )}
         <button type="button" className="ov-btn ov-btn-ghost" onClick={load} disabled={loading}>
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
           Refresh
         </button>
-        <span style={{ fontSize: 11.5, color: 'var(--color-muted)', lineHeight: 1.5,
-          whiteSpace: 'pre-line' }}>
-          {caps === null
-            ? 'Checking what this environment can do…'
-            : runsHere
-              ? `${runs.length} stored run(s). Runs execute here.`
-              : caps.runners.length
-                ? `${runs.length} stored run(s). Runs execute on ${caps.runners
-                    .map(r => r.name).join(', ')}. ` + (remoteUrl.trim()
-                      ? 'Tests will run against the URL above, which must already be serving.'
-                      : "The runner will start the project's own app from its working copy — that copy has to exist on the runner machine.")
-                : `${runs.length} stored run(s). ${caps.reason}`}
+        <span style={{ fontSize: 11.5, color: 'var(--color-muted)', lineHeight: 1.5 }}>
+          {runs.length} stored run(s). Press <strong>Start a run</strong> on the project
+          to add another.
         </span>
       </div>
 
@@ -257,14 +200,6 @@ export default function ResultsBrowser({ projectId }: { projectId: string }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {active.map(run => <RunProgress key={run.runId} run={run} />)}
         </div>
-      )}
-
-      {starting && (
-        <LocalRunView
-          projectId={projectId}
-          onClose={() => setStarting(false)}
-          onComplete={load}
-        />
       )}
 
       {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}

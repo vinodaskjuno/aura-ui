@@ -154,14 +154,6 @@ export interface TestArtifact {
 export const qaApi = {
   listProjects: () => client.get('/api/qa/projects'),
   getSuites: (projectId: string) => client.get<TestRun[]>(`/api/qa/projects/${projectId}/suites`),
-  generate: (data: {
-    project_id: string
-    test_types: string[]
-    coverage_target?: number
-    focus_areas?: string[]
-  }) => client.post(`/api/qa/generate`, data),
-  run: (run_id?: string, test_types?: string[], project_id?: string) =>
-    client.post(`/api/qa/run`, { run_id, test_types, project_id }),
   getRunDetail: (runId: string) => client.get<TestRun>(`/api/qa/runs/${runId}`),
   getArtifacts: (runId: string) => client.get<TestArtifact[]>(`/api/qa/runs/${runId}/artifacts`),
   getActivity: () => client.get('/api/qa/activity'),

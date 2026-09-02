@@ -1,25 +1,22 @@
-import { wsOrigin } from '../api/wsUrl'
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FlaskConical, RefreshCw, Layers3, Activity, FileCheck,
   ChevronDown, ChevronUp, FileText, Server, ShieldCheck, ShieldX,
-  X, Download, Camera, Play, Sparkles,
+  X, Download, Camera, Play,
 } from 'lucide-react'
 import { qaApi, type TestRun, type TestArtifact } from '../api/qa'
-import { useAuthStore } from '../store/authStore'
-import SOPTab from '../components/sop/SOPTab'
 import LocalRunView from '../components/qa/LocalRunView'
 import ResultsBrowser from '../components/qa/ResultsBrowser'
+import RunLauncher from '../components/qa/RunLauncher'
 import ProjectStatusBoard from '../components/qa/ProjectStatusBoard'
-import TestExecutionModal from '../components/qa/TestExecutionModal'
 import ActivityFeed from '../components/qa/ActivityFeed'
 import ArtifactViewer from '../components/qa/ArtifactViewer'
 import DemoScreenshots from '../components/qa/DemoScreenshots'
 import { SAMPLE_PROJECT, SAMPLE_SUITES, DEMO_PROJECT_ID } from '../data/qa-sample'
 
 // ── Tab definition ────────────────────────────────────────────────────────────
-type Tab = 'runs' | 'results' | 'artifacts' | 'activity' | 'sop'
+type Tab = 'runs' | 'results' | 'artifacts' | 'activity'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'runs',      label: 'Test Runs',    icon: <Layers3 size={13} /> },
@@ -28,7 +25,6 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'results',   label: 'Results',      icon: <Camera size={13} /> },
   { id: 'artifacts', label: 'Artifacts',    icon: <FileCheck size={13} /> },
   { id: 'activity',  label: 'Activity',     icon: <Activity size={13} /> },
-  { id: 'sop',       label: 'SOP',          icon: <FileText size={13} /> },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -72,17 +68,11 @@ function RunDetailDrawer({ run, projectId, onClose, onRefresh }: {
   run: TestRun; projectId: string; onClose: () => void; onRefresh: () => void
 }) {
   const [artifacts, setArtifacts]   = useState<TestArtifact[]>([])
-  const [running, setRunning]       = useState(false)
   const [showContainer, setShowContainer] = useState(false)
 
   useEffect(() => {
     qaApi.getArtifacts(run.testRunId).then(r => setArtifacts(r.data)).catch(() => {})
   }, [run.testRunId])
-
-  const handleRun = async () => {
-    setRunning(true)
-    try { await qaApi.run(run.testRunId, undefined, projectId); onRefresh() } finally { setRunning(false) }
-  }
 
   const total = (run.totalPassed ?? 0) + (run.totalFailed ?? 0) + (run.totalSkipped ?? 0)
 
@@ -168,11 +158,6 @@ function RunDetailDrawer({ run, projectId, onClose, onRefresh }: {
         {/* Actions */}
         <div style={{ marginTop: 'auto', paddingTop: 16, borderTop: '1px solid var(--color-border)',
           display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <motion.button className="ov-btn ov-btn-primary" onClick={handleRun}
-            disabled={running} whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
-            style={{ width: '100%', justifyContent: 'center', gap: 6 }}>
-            {running ? 'Running...' : 'Re-run Tests'}
-          </motion.button>
           <motion.button
             onClick={() => setShowContainer(true)}
             style={{ width: '100%', justifyContent: 'center', gap: 6, padding: '7px',
@@ -404,16 +389,24 @@ function StatsBar({ suites }: { suites: TestRun[] }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function QAWorkspacePage() {
-  const { token } = useAuthStore()
-  const wsUrl = wsOrigin()
-
   const [projects, setProjects]           = useState<any[]>([])
   const [selectedProject, setSelectedProject] = useState<any>(null)
   const [suites, setSuites]               = useState<TestRun[]>([])
   const [tab, setTab]                     = useState<Tab>('runs')
-  const [showExecute, setShowExecute]     = useState(false)
-  const [executeProject, setExecuteProject] = useState<any>(null)
   const [activeArtifactRunId, setActiveArtifactRunId] = useState<string | null>(null)
+  const [launchProject, setLaunchProject] = useState<any>(null)
+  // Probed once here rather than inside the launcher, so the card can be pressed and
+  // the modal can explain immediately instead of flashing a disabled button.
+  const [caps, setCaps] = useState<
+    { canRun: boolean; reason: string; runners: number } | null>(null)
+
+  useEffect(() => {
+    qaApi.capabilities()
+      .then(r => setCaps({ canRun: r.data.canRun, reason: r.data.reason,
+                           runners: r.data.runners?.length ?? 0 }))
+      .catch(() => setCaps({ canRun: false, runners: 0,
+                             reason: 'Could not reach the QA service.' }))
+  }, [])
 
   // Default to the newest run when the Artifacts tab is opened with nothing selected.
   // Making someone pick a run before showing them anything is a wasted click in the
@@ -474,19 +467,6 @@ export default function QAWorkspacePage() {
     setActiveArtifactRunId(null)
   }
 
-  const handleExecuteTests = (p: any) => {
-    setExecuteProject(p)
-    setShowExecute(true)
-  }
-
-  const handleExecuteComplete = (runId: string) => {
-    setShowExecute(false)
-    setExecuteProject(null)
-    if (selectedProject) loadSuites(selectedProject.projectId as string)
-    setActiveArtifactRunId(runId)
-    setTab('artifacts')
-  }
-
   const handleViewArtifacts = (runId: string) => {
     setActiveArtifactRunId(runId)
     setTab('artifacts')
@@ -533,6 +513,7 @@ export default function QAWorkspacePage() {
             projects={projects}
             selectedProjectId={selectedProject?.projectId ?? null}
             onSelect={handleSelectProject}
+            onStartRun={p => setLaunchProject(p)}
           />
         )}
       </div>
@@ -598,21 +579,6 @@ export default function QAWorkspacePage() {
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 24px' }}>
               {tab === 'runs' && (
                 <>
-                  {/* Test GENERATION, deliberately here and deliberately not called
-                      "execute". It asks an LLM to write test cases; it does not run
-                      anything. Sharing a verb with the run button is what made the
-                      two indistinguishable. */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10,
-                    marginBottom: 12, flexWrap: 'wrap' }}>
-                    <button type="button" className="ov-btn ov-btn-ghost"
-                      onClick={() => handleExecuteTests(selectedProject)}>
-                      <Sparkles size={13} /> Generate test cases
-                    </button>
-                    <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>
-                      Writes new cases with an LLM. To execute them, use{' '}
-                      <strong>Start a run</strong> on the Results tab.
-                    </span>
-                  </div>
                   <TestRunsTab
                     suites={suites}
                     projectId={selectedProject.projectId as string}
@@ -676,13 +642,6 @@ export default function QAWorkspacePage() {
                 />
               )}
 
-              {tab === 'sop' && (
-                <SOPTab
-                  projectId={selectedProject.projectId as string}
-                  stage="qa"
-                  projectName={selectedProject.name as string}
-                />
-              )}
             </div>
           </>
         ) : (
@@ -705,15 +664,18 @@ export default function QAWorkspacePage() {
         )}
       </div>
 
-      {/* ── Test Execution Modal ── */}
+      {/* ── Run launcher ─────────────────────────────────────────────────── */}
       <AnimatePresence>
-        {showExecute && executeProject && (
-          <TestExecutionModal
-            project={executeProject}
-            wsUrl={wsUrl}
-            token={token ?? ''}
-            onClose={() => { setShowExecute(false); setExecuteProject(null) }}
-            onComplete={handleExecuteComplete}
+        {launchProject && (
+          <RunLauncher
+            project={launchProject}
+            canRun={caps?.canRun ?? false}
+            reason={caps?.reason ?? ''}
+            runners={caps?.runners ?? 0}
+            onClose={() => setLaunchProject(null)}
+            onFinished={() => {
+              if (selectedProject) loadSuites(selectedProject.projectId as string)
+            }}
           />
         )}
       </AnimatePresence>
