@@ -6,6 +6,7 @@
  * per view.
  */
 import { useGraphTheme } from '../../../../../hooks/useGraphTheme'
+import { overlayColorFor, shouldRenderHollow } from '../../../../provenance/overlayPalette'
 import { hashColor } from '../../lensFormat'
 import CardField from './CardField'
 import type { LensNodeType, NodeLabel } from '../../lensTypes'
@@ -27,10 +28,14 @@ export default function LensNodeCard({
   node, type, cfg, selected, hovered, highlighted, alertColor, width,
 }: LensNodeCardProps) {
   const t = useGraphTheme()
-  const color = cfg?.color ?? hashColor(type.toLowerCase())
+  // Shared by the DAG, Lane and Specialist renderers, so hooking the overlay
+  // here covers three views at once.
+  const props = node as unknown as Record<string, unknown>
+  const overlay = overlayColorFor(props)
+  const hollow = shouldRenderHollow(props)
+  const color = overlay ?? cfg?.color ?? hashColor(type.toLowerCase())
   const Icon = cfg?.Icon
   const fields = cfg?.cardFields ?? []
-  const props = node as unknown as Record<string, unknown>
 
   const border = selected ? t.accent : highlighted ? '#f59e0b' : t.flowNodeBorder
 
@@ -39,8 +44,8 @@ export default function LensNodeCard({
       width, boxSizing: 'border-box',
       padding: '8px 10px', borderRadius: 10,
       background: selected ? t.accentBg : hovered ? t.rowHover : t.flowNodeBg,
-      border: `1.5px solid ${border}`,
-      borderTop: alertColor ? `3px solid ${alertColor}` : `1.5px solid ${border}`,
+      border: `1.5px ${hollow ? 'dashed' : 'solid'} ${border}`,
+      borderTop: alertColor ? `3px solid ${alertColor}` : `1.5px ${hollow ? 'dashed' : 'solid'} ${border}`,
       boxShadow: selected ? `0 0 12px ${t.accent}44` : '0 2px 8px rgba(0,0,0,0.25)',
       transition: 'border-color 0.15s, background 0.15s',
       display: 'flex', flexDirection: 'column', gap: 3,

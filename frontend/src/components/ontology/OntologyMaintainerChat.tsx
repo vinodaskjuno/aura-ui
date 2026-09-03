@@ -18,6 +18,23 @@ interface Props {
 
 type Tab = 'chat' | 'audit'
 
+/**
+ * Colour for an audit action, tolerant of a row that has none.
+ *
+ * This read `entry.action.startsWith(...)` inline, so a single row without an
+ * `action` threw and the error boundary replaced the whole page — the tab showed
+ * nothing at all rather than the other forty-nine entries. The backend no longer
+ * returns such rows (`get_audit_log` filters on auditId), but a render path for a
+ * list of remote records should not depend on every field being present.
+ */
+function actionTone(action?: string): { bg: string; fg: string } {
+  const a = action ?? ''
+  if (a.startsWith('CREATE')) return { bg: 'rgba(16,185,129,0.2)', fg: '#10b981' }
+  if (a.startsWith('RETIRE')) return { bg: 'rgba(244,67,54,0.2)', fg: '#f44336' }
+  if (!a) return { bg: 'rgba(148,163,184,0.18)', fg: '#94a3b8' }
+  return { bg: 'rgba(74,158,255,0.2)', fg: '#4a9eff' }
+}
+
 export default function OntologyMaintainerChat({ onClose, onHighlightNodes, onGraphRefresh }: Props) {
   const { token } = useAuthStore()
   const [tab, setTab] = useState<Tab>('chat')
@@ -441,13 +458,9 @@ export default function OntologyMaintainerChat({ onClose, onHighlightNodes, onGr
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '5px' }}>
                       <span style={{
                         padding: '2px 7px', borderRadius: '4px', fontSize: '9px', fontWeight: 700,
-                        background: entry.action.startsWith('CREATE') ? 'rgba(16,185,129,0.2)'
-                          : entry.action.startsWith('RETIRE') ? 'rgba(244,67,54,0.2)'
-                          : 'rgba(74,158,255,0.2)',
-                        color: entry.action.startsWith('CREATE') ? '#10b981'
-                          : entry.action.startsWith('RETIRE') ? '#f44336'
-                          : '#4a9eff',
-                      }}>{entry.action}</span>
+                        background: actionTone(entry.action).bg,
+                        color: actionTone(entry.action).fg,
+                      }}>{entry.action || 'UNKNOWN'}</span>
                       <span style={{ flex: 1, color: '#4a7aaa', fontSize: '9px' }}>{new Date(entry.timestamp).toLocaleString()}</span>
                       {/* Highlight in graph icon */}
                       <button

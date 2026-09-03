@@ -6,13 +6,13 @@ import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ConnectorsPage from './pages/ConnectorsPage'
 import MCPServersPage from './pages/MCPServersPage'
-import AdvisorPage from './pages/AdvisorPage'
 import SettingsPage from './pages/SettingsPage'
 import UploadPage from './pages/UploadPage'
 import LogsPage from './pages/LogsPage'
 import AIOpsPage from './pages/AIOpsPage'
 import ObservabilityPage from './pages/ObservabilityPage'
 import OntologyVisualizerPage from './pages/OntologyVisualizerPage'
+import LineageExplorerPage from './pages/LineageExplorerPage'
 import QAWorkspacePage from './pages/QAWorkspacePage'
 import UserManagementPage from './pages/settings/UserManagementPage'
 import RoleManagementPage from './pages/settings/RoleManagementPage'
@@ -46,9 +46,9 @@ export default function App() {
           <Route path="/observability"  element={<RoleProtectedRoute permission="observability"><ObservabilityPage /></RoleProtectedRoute>} />
           <Route path="/ai-observability" element={<RoleProtectedRoute permission="dev_workspace"><AIObservabilityPage /></RoleProtectedRoute>} />
           <Route path="/ontology"       element={<RoleProtectedRoute permission="ontology"><OntologyVisualizerPage /></RoleProtectedRoute>} />
+          <Route path="/lineage"        element={<RoleProtectedRoute permission="ontology"><LineageExplorerPage /></RoleProtectedRoute>} />
           <Route path="/connectors"     element={<RoleProtectedRoute permission="connectors"><ConnectorsPage /></RoleProtectedRoute>} />
           <Route path="/mcp"            element={<RoleProtectedRoute permission="connectors"><MCPServersPage /></RoleProtectedRoute>} />
-          <Route path="/advisor"        element={<RoleProtectedRoute permission="advisor"><AdvisorPage /></RoleProtectedRoute>} />
           <Route path="/settings"       element={<RoleProtectedRoute permission="settings"><SettingsPage /></RoleProtectedRoute>} />
           <Route path="/settings/users" element={<RoleProtectedRoute permission="user_management"><UserManagementPage /></RoleProtectedRoute>} />
           <Route path="/settings/roles" element={<RoleProtectedRoute permission="role_management"><RoleManagementPage /></RoleProtectedRoute>} />

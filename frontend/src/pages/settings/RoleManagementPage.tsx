@@ -12,7 +12,6 @@ const ALL_PERMISSIONS = [
   { key: 'observability',   label: 'Observability (SRE)', group: 'Workspace' },
   { key: 'knowledge_graph', label: 'Knowledge Graph',     group: 'Workspace' },
   { key: 'ontology',        label: 'Onto Verse',          group: 'Workspace' },
-  { key: 'advisor',         label: 'AI Advisor',          group: 'Workspace' },
   { key: 'connectors',      label: 'Connectors',          group: 'Data' },
   { key: 'scheduler',       label: 'Scheduler',           group: 'Data' },
   { key: 'upload',          label: 'Upload',              group: 'Data' },

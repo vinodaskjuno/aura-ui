@@ -20,6 +20,10 @@ import OntologyZoomControls from '../components/ontology/OntologyZoomControls'
 import OntologyBreadcrumb from '../components/ontology/OntologyBreadcrumb'
 import OntologyDetailPanel from '../components/ontology/OntologyDetailPanel'
 import RelationshipDetailPanel from '../components/ontology/RelationshipDetailPanel'
+import RunInspector from '../components/provenance/RunInspector'
+import { useProvenanceOverlayStore } from '../store/provenanceOverlayStore'
+import { setOverlayContext } from '../components/provenance/overlayPalette'
+import type { OverlayMode } from '../components/provenance/overlayPalette'
 import { useGraphTheme } from '../hooks/useGraphTheme'
 import StarsBackground from '../components/ontology/StarsBackground'
 import WelcomeOverlay from '../components/ontology/WelcomeOverlay'
@@ -95,6 +99,26 @@ export default function OntologyVisualizerPage() {
 
   // Highlight state — set from OntologyMaintainerChat when user clicks "Highlight in graph"
   const [highlightedNodeIds, setHighlightedNodeIds] = useState<Set<string>>(new Set())
+  // Second-level drawer over the detail panel. The selected node stays selected
+  // underneath, so following a run pill is a detour rather than a change of subject.
+  const [inspectRunId, setInspectRunId] = useState<string | null>(null)
+
+  // `?colour=` so an overlay view is shareable like every other Onto Verse
+  // state (?lens, ?layout, ?node already round-trip through the URL).
+  const overlayMode = useProvenanceOverlayStore(st => st.mode)
+  const setOverlayMode = useProvenanceOverlayStore(st => st.setMode)
+
+  // URL -> store, once per change, so a shared link opens on the right overlay.
+  const colourParam = searchParams.get('colour')
+  useEffect(() => {
+    const wanted = (colourParam || 'type') as OverlayMode
+    if (wanted !== overlayMode) setOverlayMode(wanted)
+    // The canvas paint path reads an ambient value rather than the store (see
+    // overlayPalette), so it is synced here too — a reload that set the store but
+    // not the ambient value would render the default palette under the new legend.
+    setOverlayContext({ mode: wanted })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colourParam])
 
   // UI state
   const [showWelcome, setShowWelcome] = useState(false)
@@ -313,6 +337,12 @@ export default function OntologyVisualizerPage() {
         onClearProjectFocus={() => { useOntologyStore.getState().clearProjectFocus(); setSelectedNode(null) }}
         onTourGuideToggle={() => setShowTourGuide(v => !v)}
         tourGuideActive={showTourGuide}
+        onOverlayModeChange={(mode) => setSearchParams(prev => {
+          const next = new URLSearchParams(prev)
+          if (mode === 'type') next.delete('colour')
+          else next.set('colour', mode)
+          return next
+        }, { replace: true })}
       />
 
       {layout.chrome.kpiBar && (
@@ -407,6 +437,7 @@ export default function OntologyVisualizerPage() {
         allLinks={allLinks}
         onClose={() => setSelectedNode(null)}
         onTraverseProject={handleTraverseFromProject}
+        onOpenRun={setInspectRunId}
         onOpenLayout={(id) => {
           // May switch lens, so drop filters scoped to the previous one.
           openLayout(id)
@@ -430,6 +461,23 @@ export default function OntologyVisualizerPage() {
         onClose={() => setSelectedLink(null)}
         onGoToSource={(node) => { setSelectedNode(node); setSelectedLink(null) }}
         onGoToTarget={(node) => { setSelectedNode(node); setSelectedLink(null) }}
+        onOpenRun={setInspectRunId}
+      />
+
+      <RunInspector
+        runId={inspectRunId}
+        onBack={() => setInspectRunId(null)}
+        onClose={() => { setInspectRunId(null); setSelectedNode(null); setSelectedLink(null) }}
+        onSelectEntity={(entityId) => {
+          // Select on the canvas if the node is in the current view; otherwise say
+          // so rather than silently doing nothing, which reads as a broken link.
+          const found = allNodes.find(n => n.id === entityId)
+          if (found) {
+            setSelectedNode(found)
+            setSelectedLink(null)
+            setInspectRunId(null)
+          }
+        }}
       />
 
       {showWelcome && <WelcomeOverlay onStart={() => setShowWelcome(false)} />}

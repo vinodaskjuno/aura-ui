@@ -4,6 +4,7 @@ import * as d3 from 'd3'
 import type { OntologyNode, OntologyLink, ViewMode } from '../../types/ontology'
 import { useThemeStore } from '../../store/themeStore'
 import { NODE_TYPE_CONFIG, NODE_SIZES, fallbackColor } from './lenses/nodePalette'
+import { overlayColorFor } from '../provenance/overlayPalette'
 
 interface Props {
   allNodes: OntologyNode[]
@@ -59,6 +60,10 @@ function nodeBaseSize(node: any): number {
 }
 
 function nodeColor(node: any): string {
+  // The provenance overlay wins when one is active; `overlayColorFor` returns null
+  // in the default 'type' mode, so this is the original behaviour untouched.
+  const overlay = overlayColorFor(node)
+  if (overlay) return overlay
   const key = (node.node_type || node.type || '').toLowerCase()
   return NODE_TYPE_CONFIG[key]?.color ?? node.color ?? fallbackColor(key)
 }

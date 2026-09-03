@@ -1,23 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import type { OntologyNode, OntologyLink } from '../../types/ontology'
 import { useGraphTheme } from '../../hooks/useGraphTheme'
-import { useAuthStore } from '../../store/authStore'
 import { useOntologyStore } from '../../store/ontologyStore'
-
-interface ChangelogEntry {
-  changeId: string
-  timestamp: string
-  entityId: string
-  entityType: string
-  entityLabel: string
-  entityName: string
-  changeType: string
-  actor: string
-  before: string | null
-  after: string | null
-  source: string
-  notes: string
-}
+import LineageRibbon from '../provenance/LineageRibbon'
+import TracePanel from '../provenance/TracePanel'
+import { useTrace } from '../provenance/useTrace'
 
 interface Props {
   node: OntologyNode | null
@@ -31,21 +18,15 @@ interface Props {
   /** Lens-specific sections rendered above the generic properties. */
   lensSections?: React.ReactNode
 
+  /** Open the ingestion run that wrote this node, in the Run Inspector. */
+  onOpenRun?: (runId: string) => void
+
 }
 
-type DetailTab = 'info' | 'provenance' | 'history'
-
-interface NodeVersionInfo {
-  versionId: string
-  versionNumber: string
-  loadMethod: string
-  actor: string
-  startedAt: string
-  finishedAt?: string
-  status: string
-  sources?: string[]
-  notes?: string
-}
+// `provenance` and `history` were two halves of one question — where did this
+// come from, and what has happened to it since — and splitting them is why
+// neither could answer it. They are now one tab.
+type DetailTab = 'info' | 'trace'
 
 const CODE_NODE_TYPES = new Set(['Function', 'Class', 'Module', 'CodeFile', 'Repository', 'API', 'Dependency'])
 
@@ -83,202 +64,20 @@ function buildCodeExplanation(node: OntologyNode, outgoing: OntologyLink[], inco
   return parts.join(' ')
 }
 
-interface ProvenancePanelProps {
-  node: OntologyNode
-  outgoing: OntologyLink[]
-  incoming: OntologyLink[]
-  allNodes: OntologyNode[]
-  nodeVersion: NodeVersionInfo | null
-  loading: boolean
-}
-
-function ProvenanceTab({ node, outgoing, incoming, allNodes, nodeVersion, loading }: ProvenancePanelProps) {
+export default function OntologyDetailPanel({ node, allNodes, allLinks, onClose, onTraverseProject, onOpenLayout, lensSections, onOpenRun }: Props) {
   const gt = useGraphTheme()
-  const n = node as Record<string, unknown>
-  const isCode = CODE_NODE_TYPES.has(node.node_type)
-  const confidence = n.confidence as number | undefined
-  const discoveredBy = n.discoveredBy as string | undefined
-  const factType = n.factType as string | undefined
-  const evidence = n.evidence as string | string[] | undefined
-  const evidenceList = Array.isArray(evidence) ? evidence : evidence ? [evidence] : []
-
-  const sectionLabel: React.CSSProperties = {
-    fontSize: '9px', fontWeight: 700, textTransform: 'uppercase',
-    letterSpacing: '1.2px', color: gt.sectionLabel, marginBottom: '8px',
-  }
-
-  const card: React.CSSProperties = {
-    padding: '10px 12px', background: gt.panelCard,
-    border: `1px solid ${gt.panelCardBorder}`, borderRadius: '8px',
-    marginBottom: '10px',
-  }
-
-  const factTypeColor = factType === 'known' ? '#22c55e' : factType === 'inferred' ? '#f59e0b' : '#a78bfa'
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-      {/* Version introduced-by */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={sectionLabel}>Introduced By</div>
-        {loading ? (
-          <div style={{ color: gt.panelSubtext, fontSize: 12 }}>Loading version info…</div>
-        ) : nodeVersion ? (
-          <div style={card}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: gt.accent }}>{nodeVersion.versionNumber}</span>
-              <span style={{
-                fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 4,
-                background: `${gt.accent}22`, color: gt.accent, textTransform: 'uppercase',
-              }}>{nodeVersion.loadMethod}</span>
-              <span style={{
-                fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 4,
-                background: nodeVersion.status === 'success' ? '#22c55e22' : '#f59e0b22',
-                color: nodeVersion.status === 'success' ? '#22c55e' : '#f59e0b',
-                textTransform: 'uppercase',
-              }}>{nodeVersion.status}</span>
-            </div>
-            <div style={{ fontSize: 11, color: gt.panelSubtext }}>
-              Actor: <span style={{ color: gt.panelText }}>{nodeVersion.actor}</span>
-            </div>
-            <div style={{ fontSize: 11, color: gt.panelSubtext, marginTop: 2 }}>
-              {new Date(nodeVersion.startedAt).toLocaleString()}
-            </div>
-            {nodeVersion.sources && nodeVersion.sources.length > 0 && (
-              <div style={{ fontSize: 11, color: gt.panelSubtext, marginTop: 4 }}>
-                Sources: <span style={{ color: gt.panelText }}>{nodeVersion.sources.join(', ')}</span>
-              </div>
-            )}
-            {nodeVersion.notes && (
-              <div style={{ fontSize: 11, color: gt.panelSubtext, marginTop: 4, fontStyle: 'italic' }}>{nodeVersion.notes}</div>
-            )}
-          </div>
-        ) : (
-          <div style={{ color: gt.panelSubtext, fontSize: 12, padding: '8px 0' }}>
-            No version record found for this node.
-          </div>
-        )}
-      </div>
-
-      {/* Discovery trail */}
-      {(confidence !== undefined || discoveredBy || factType) && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={sectionLabel}>Discovery Trail</div>
-          <div style={card}>
-            {confidence !== undefined && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 11, color: gt.panelSubtext, width: 80 }}>Confidence</span>
-                <div style={{ flex: 1, height: 5, borderRadius: 3, background: `${gt.panelBorder}` }}>
-                  <div style={{ width: `${confidence * 100}%`, height: '100%', borderRadius: 3, background: confidence > 0.8 ? '#22c55e' : confidence > 0.5 ? '#f59e0b' : '#ef4444', transition: 'width 0.4s' }} />
-                </div>
-                <span style={{ fontSize: 11, fontWeight: 700, color: confidence > 0.8 ? '#22c55e' : confidence > 0.5 ? '#f59e0b' : '#ef4444' }}>
-                  {(confidence * 100).toFixed(0)}%
-                </span>
-              </div>
-            )}
-            {discoveredBy && (
-              <div style={{ fontSize: 11, color: gt.panelSubtext, marginBottom: 4 }}>
-                Discovered by: <span style={{ color: gt.panelText }}>{discoveredBy}</span>
-              </div>
-            )}
-            {factType && (
-              <div style={{ fontSize: 11, color: gt.panelSubtext, marginBottom: 4 }}>
-                Fact type: <span style={{ fontWeight: 700, color: factTypeColor }}>{factType}</span>
-              </div>
-            )}
-            {evidenceList.length > 0 && (
-              <div style={{ marginTop: 6 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: gt.panelSubtext, marginBottom: 4 }}>Evidence</div>
-                {evidenceList.map((ev, i) => (
-                  <div key={i} style={{ fontSize: 10, color: gt.accent, fontFamily: 'JetBrains Mono, monospace', padding: '2px 6px', background: `${gt.accent}11`, borderRadius: 4, marginBottom: 2 }}>
-                    {ev}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Code explanation — only for code-type nodes */}
-      {isCode && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={sectionLabel}>Code Explanation</div>
-          <div style={{ ...card, borderLeft: `3px solid ${gt.accent}` }}>
-            <p style={{ fontSize: 12, color: gt.panelText, lineHeight: 1.6, margin: 0 }}>
-              {buildCodeExplanation(node, outgoing, incoming, allNodes)}
-            </p>
-            {/* Linked business rule / domain entities */}
-            {outgoing.filter(l => ['IMPLEMENTS', 'BELONGS_TO', 'GOVERNED_BY'].includes(l.type)).length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: gt.panelSubtext, marginBottom: 6 }}>Linked Entities</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {outgoing.filter(l => ['IMPLEMENTS', 'BELONGS_TO', 'GOVERNED_BY'].includes(l.type)).slice(0, 6).map((l, i) => {
-                    const tid = typeof l.target === 'string' ? l.target : (l.target as OntologyNode).id
-                    const t = allNodes.find(x => x.id === tid)
-                    if (!t) return null
-                    return (
-                      <span key={i} style={{
-                        fontSize: 10, padding: '2px 8px', borderRadius: 12,
-                        background: gt.accentBg, color: gt.accent,
-                        border: `1px solid ${gt.accentBorder}`, fontWeight: 600,
-                      }}>
-                        {l.type}: {t.label}
-                      </span>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* No provenance at all */}
-      {!nodeVersion && !loading && confidence === undefined && !discoveredBy && !isCode && (
-        <div style={{ textAlign: 'center', color: gt.panelSubtext, padding: '24px 0', fontSize: 12 }}>
-          No provenance metadata available for this node.
-        </div>
-      )}
-    </div>
-  )
-}
-
-export default function OntologyDetailPanel({ node, allNodes, allLinks, onClose, onTraverseProject, onOpenLayout, lensSections }: Props) {
-  const gt = useGraphTheme()
-  const { hasPermission } = useAuthStore()
-  const canMaintain = hasPermission('ontology_maintain')
+  // Whether values may be shown is decided by the API (it redacts before/after
+  // for non-maintainers) rather than re-derived here — one place to get right.
   const { setFocusedProjectNode } = useOntologyStore()
   const [activeTab, setActiveTab] = useState<DetailTab>('info')
-  const [changelog, setChangelog] = useState<ChangelogEntry[]>([])
-  const [changelogLoading, setChangelogLoading] = useState(false)
-  const [nodeVersion, setNodeVersion] = useState<NodeVersionInfo | null>(null)
-  const [nodeVersionLoading, setNodeVersionLoading] = useState(false)
 
-  useEffect(() => {
-    if (activeTab === 'provenance' && node) {
-      setNodeVersionLoading(true)
-      fetch(`/api/ontology/nodes/${encodeURIComponent(node.id)}/version`, {
-        headers: { Authorization: `Bearer ${useAuthStore.getState().token}` },
-      })
-        .then(r => r.ok ? r.json() : null)
-        .then(setNodeVersion)
-        .catch(() => setNodeVersion(null))
-        .finally(() => setNodeVersionLoading(false))
-    }
-  }, [activeTab, node?.id])
-
-  useEffect(() => {
-    if (activeTab === 'history' && node && canMaintain) {
-      setChangelogLoading(true)
-      fetch(`/api/ontology/nodes/${encodeURIComponent(node.id)}/changelog?limit=20`, {
-        headers: { Authorization: `Bearer ${useAuthStore.getState().token}` },
-      })
-        .then(r => r.ok ? r.json() : [])
-        .then(setChangelog)
-        .catch(() => setChangelog([]))
-        .finally(() => setChangelogLoading(false))
-    }
-  }, [activeTab, node?.id, canMaintain])
+  // Fetched as soon as a node is selected, not when a tab is opened: the lineage
+  // ribbon is always visible, and the point of it is that nobody has to go looking.
+  //
+  // Both old fetches used raw `fetch` with a hand-built Authorization header, which
+  // silently bypassed every interceptor in `api/client.ts`.
+  const { data: trace, loading: traceLoading, error: traceError, reload } =
+    useTrace('node', node?.id)
 
   // Reset tab when node changes
   useEffect(() => { setActiveTab('info') }, [node?.id])
@@ -360,9 +159,18 @@ export default function OntologyDetailPanel({ node, allNodes, allLinks, onClose,
         </button>
       </div>
 
+      {/* Where this came from — always visible, no tab required. */}
+      <LineageRibbon
+        trace={trace?.trace ?? null}
+        latestRun={trace?.latest ?? null}
+        loading={traceLoading}
+        onOpenRun={onOpenRun}
+        onOpenTrace={() => setActiveTab('trace')}
+      />
+
       {/* Tab switcher */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: `1px solid ${gt.panelBorder}`, paddingBottom: '0' }}>
-        {(['info', 'provenance', ...(canMaintain ? ['history'] : [])] as DetailTab[]).map(t => (
+        {(['info', 'trace'] as DetailTab[]).map(t => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
@@ -379,99 +187,47 @@ export default function OntologyDetailPanel({ node, allNodes, allLinks, onClose,
               whiteSpace: 'nowrap',
             }}
           >
-            {t === 'info' ? 'Details' : t === 'provenance' ? '✦ Provenance' : '⏱ History'}
+            {t === 'info' ? 'Details' : '\u2726 Trace'}
           </button>
         ))}
       </div>
 
-      {/* Provenance tab */}
-      {activeTab === 'provenance' && (
-        <ProvenanceTab
-          node={node}
-          outgoing={outgoing}
-          incoming={incoming}
-          allNodes={allNodes}
-          nodeVersion={nodeVersion}
-          loading={nodeVersionLoading}
+      {/* Trace tab — origin, contributors, trust, timeline */}
+      {activeTab === 'trace' && (
+        <TracePanel
+          data={trace}
+          loading={traceLoading}
+          error={traceError}
+          onOpenRun={onOpenRun}
+          onRetry={reload}
         />
-      )}
-
-      {/* History tab */}
-      {activeTab === 'history' && (
-        <div>
-          {changelogLoading ? (
-            <div style={{ textAlign: 'center', color: gt.panelSubtext, padding: '24px', fontSize: '12px' }}>
-              Loading history…
-            </div>
-          ) : changelog.length === 0 ? (
-            <div style={{ textAlign: 'center', color: gt.panelSubtext, padding: '24px', fontSize: '12px' }}>
-              No version history yet for this node.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {changelog.map((entry) => {
-                const changeColors: Record<string, string> = {
-                  CREATE: '#10b981', UPDATE: '#4a9eff', RETIRE: '#f44336',
-                  RELATIONSHIP_ADD: '#a78bfa', RELATIONSHIP_ARCHIVE: '#f59e0b',
-                  BULK_LOAD: '#6a7aaa',
-                }
-                const color = changeColors[entry.changeType] ?? '#8a9adb'
-                let before: any = null, after: any = null
-                try { if (entry.before) before = JSON.parse(entry.before) } catch {}
-                try { if (entry.after) after = JSON.parse(entry.after) } catch {}
-                return (
-                  <div key={entry.changeId} style={{
-                    padding: '10px 12px',
-                    background: gt.panelCard,
-                    border: `1px solid ${gt.panelCardBorder}`,
-                    borderLeft: `3px solid ${color}`,
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <span style={{
-                        padding: '1px 6px', borderRadius: '3px', fontSize: '9px', fontWeight: 700,
-                        background: `${color}22`, color,
-                      }}>
-                        {entry.changeType}
-                      </span>
-                      <span style={{ color: gt.panelSubtext, fontSize: '10px' }}>
-                        {new Date(entry.timestamp).toLocaleString()}
-                      </span>
-                    </div>
-                    <div style={{ color: gt.panelText, marginBottom: '4px' }}>
-                      <span style={{ color: gt.accent }}>{entry.actor}</span>
-                      {' via '}
-                      <span style={{ color: gt.panelSubtext }}>{entry.source}</span>
-                    </div>
-                    {entry.notes && (
-                      <div style={{ color: gt.panelSubtext, fontStyle: 'italic', marginBottom: '4px' }}>{entry.notes}</div>
-                    )}
-                    {(before || after) && (
-                      <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                        {before && (
-                          <div style={{ flex: 1, padding: '3px 6px', background: 'rgba(244,67,54,0.08)', borderRadius: '3px', color: '#f44336', fontSize: '10px' }}>
-                            {JSON.stringify(before)}
-                          </div>
-                        )}
-                        {after && (
-                          <div style={{ flex: 1, padding: '3px 6px', background: 'rgba(16,185,129,0.08)', borderRadius: '3px', color: '#10b981', fontSize: '10px' }}>
-                            {JSON.stringify(after)}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
       )}
 
       {/* Details tab */}
       {activeTab === 'info' && <>
       {lensSections}
+
+      {/* Code explanation. Lived under Provenance, which was the wrong home: it
+          describes what this node IS, not where it came from. */}
+      {CODE_NODE_TYPES.has(node.node_type) && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{
+            fontSize: '9px', fontWeight: 700, textTransform: 'uppercase',
+            letterSpacing: '1.2px', color: gt.sectionLabel, marginBottom: '8px',
+          }}>
+            What this is
+          </div>
+          <div style={{
+            padding: '10px 12px', background: gt.panelCard,
+            border: `1px solid ${gt.panelCardBorder}`,
+            borderLeft: `3px solid ${gt.accent}`, borderRadius: '8px',
+          }}>
+            <p style={{ fontSize: 12, color: gt.panelText, lineHeight: 1.6, margin: 0 }}>
+              {buildCodeExplanation(node, outgoing, incoming, allNodes)}
+            </p>
+          </div>
+        </div>
+      )}
       {/* Domain View + Structural View buttons for project nodes */}
       {isProjectNode && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>

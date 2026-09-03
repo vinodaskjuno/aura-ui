@@ -3,8 +3,8 @@ import { motion } from 'framer-motion'
 import {
   LayoutDashboard, MessageSquare, Settings, Plug2,
   LogOut, FolderUp, ScrollText, Activity, Orbit,
-  TestTube2, Users, ShieldCheck, BrainCircuit, CalendarClock, Bot, Database,
-  ScanSearch, Radar, Server,
+  TestTube2, Users, ShieldCheck, CalendarClock, Bot, Database,
+  ScanSearch, Radar, Server, GitCompareArrows,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { LogoMark } from '../ui/Logo'
@@ -25,28 +25,34 @@ interface NavGroup {
 
 const ALL_NAV_GROUPS: NavGroup[] = [
   {
+    // Ordered by how the work actually flows: build the graph (Onto Verse,
+    // Lineage), then the surfaces that consume it (DevMate, QualityMind,
+    // Reverse Eng.), then the ones that observe it running (AI Traces, AI Ops,
+    // Observability).
     label: 'WORKSPACE',
     items: [
-      { to: '/dashboard',            label: 'Dashboard',           icon: LayoutDashboard, permission: 'dashboard' },
-      { to: '/ontology',             label: 'Onto Verse',          icon: Orbit,           permission: 'ontology' },
-      { to: '/dev-chat',             label: 'DevMate',             icon: Bot,             permission: 'dev_workspace' },
-      { to: '/ai-observability',     label: 'AI Traces',           icon: Activity,        permission: 'dev_workspace' },
-      { to: '/qa',                   label: 'QualityMind',         icon: TestTube2,       permission: 'qa_workspace' },
-      { to: '/aiops',                label: 'AI Ops',              icon: Activity,        permission: 'aiops' },
-      { to: '/observability',        label: 'Observability',       icon: Radar,           permission: 'observability', badge: 'SRE' },
-      { to: '/reverse-engineering',  label: 'Reverse Eng.',        icon: ScanSearch,      permission: 'dev_workspace' },
-      { to: '/ontology/data-loader', label: 'Data Loader',         icon: Database,        permission: 'ontology_maintain' },
-      { to: '/advisor',              label: 'AI Advisor',          icon: BrainCircuit,    permission: 'advisor' },
+      { to: '/dashboard',            label: 'Dashboard',           icon: LayoutDashboard,  permission: 'dashboard' },
+      { to: '/ontology',             label: 'Onto Verse',          icon: Orbit,            permission: 'ontology' },
+      { to: '/lineage',              label: 'Lineage',             icon: GitCompareArrows, permission: 'ontology' },
+      { to: '/dev-chat',             label: 'DevMate',             icon: Bot,              permission: 'dev_workspace' },
+      { to: '/qa',                   label: 'QualityMind',         icon: TestTube2,        permission: 'qa_workspace' },
+      { to: '/reverse-engineering',  label: 'Reverse Eng.',        icon: ScanSearch,       permission: 'dev_workspace' },
+      { to: '/ai-observability',     label: 'AI Traces',           icon: Activity,         permission: 'dev_workspace' },
+      { to: '/aiops',                label: 'AI Ops',              icon: Activity,         permission: 'aiops' },
+      { to: '/observability',        label: 'Observability',       icon: Radar,            permission: 'observability', badge: 'SRE' },
     ],
   },
   {
     label: 'DATA',
     items: [
-      { to: '/connectors',  label: 'Connectors',          icon: Plug2,           permission: 'connectors' },
-      { to: '/mcp',         label: 'MCP Servers',         icon: Server,          permission: 'connectors' },
-      { to: '/scheduler',   label: 'Scheduler',           icon: CalendarClock,   permission: 'scheduler' },
-      { to: '/upload',      label: 'Upload',              icon: FolderUp,        permission: 'upload' },
-      { to: '/logs',        label: 'Logs',                icon: ScrollText,      permission: 'logs' },
+      // Data Loader leads: it is what puts data into the graph, and Connectors
+      // and MCP Servers are the sources it draws on.
+      { to: '/ontology/data-loader', label: 'Data Loader',         icon: Database,        permission: 'ontology_maintain' },
+      { to: '/connectors',           label: 'Connectors',          icon: Plug2,           permission: 'connectors' },
+      { to: '/mcp',                  label: 'MCP Servers',         icon: Server,          permission: 'connectors' },
+      { to: '/scheduler',            label: 'Scheduler',           icon: CalendarClock,   permission: 'scheduler' },
+      { to: '/upload',               label: 'Upload',              icon: FolderUp,        permission: 'upload' },
+      { to: '/logs',                 label: 'Logs',                icon: ScrollText,      permission: 'logs' },
     ],
   },
   {

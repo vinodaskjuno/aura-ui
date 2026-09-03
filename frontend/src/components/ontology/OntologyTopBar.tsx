@@ -1,3 +1,4 @@
+import OverlaySwitcher from '../provenance/OverlaySwitcher'
 import { type RefObject } from 'react'
 import { RefreshCw, MessageSquareCode, Search, Play, ChevronRight } from 'lucide-react'
 import LensLayoutTabs from '../ontology/lenses/LensLayoutTabs'
@@ -22,6 +23,8 @@ interface Props {
   onClearProjectFocus?: () => void
   onTourGuideToggle?: () => void
   tourGuideActive?: boolean
+  /** Reflected into the URL so an overlay view is shareable. */
+  onOverlayModeChange?: (mode: string) => void
 }
 
 function Divider() {
@@ -33,7 +36,7 @@ export default function OntologyTopBar({
   searchTerm, onSearchChange, searchInputRef,
   projectFocus, canMaintain,
   onMaintainerChatToggle, maintainerChatOpen, onRefreshOrgGraph, onClearProjectFocus,
-  onTourGuideToggle, tourGuideActive,
+  onTourGuideToggle, tourGuideActive, onOverlayModeChange,
 }: Props) {
   const isDetailView = !!layout.detailOnly
   const showTourGuide = layout.chrome.tourGuide && !!onTourGuideToggle
@@ -99,6 +102,9 @@ export default function OntologyTopBar({
 
       {/* ── Spacer ── */}
       <div style={{ flex: 1 }} />
+
+      {/* ── Colour-by (provenance overlay) ── */}
+      <OverlaySwitcher onModeChange={onOverlayModeChange} />
 
       {/* ── Search ── */}
       <div style={{ position: 'relative', flexShrink: 0 }}>

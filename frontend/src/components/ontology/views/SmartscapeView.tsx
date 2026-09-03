@@ -4,6 +4,7 @@ import ForceGraph from 'force-graph'
 import type { OntologyNode, OntologyLink, SearchResult } from '../../../api/ontologyUniverse'
 import { searchNodes as apiSearchNodes, getNodeSubgraph } from '../../../api/ontologyUniverse'
 import { useGraphTheme } from '../../../hooks/useGraphTheme'
+import { overlayColorFor } from '../../provenance/overlayPalette'
 import { useOntologyStore } from '../../../store/ontologyStore'
 import { useWorkspaceStore } from '../../../store/workspaceStore'
 import client from '../../../api/client'
@@ -843,10 +844,14 @@ export default function SmartscapeView({ nodes, links, onNodeClick }: Props) {
     const sourceNodes = drillDownGraphData ? drillDownGraphData.nodes : nodes
     return sourceNodes.map(n => {
       const cat = getCategoryFor(n.node_type)
+      // Smartscape holds its own force-graph instance and its own category
+      // palette, so it needs the overlay applied here too — a view where the
+      // overlay silently does nothing is worse than not offering it.
+      const overlay = overlayColorFor(n as unknown as Record<string, unknown>)
       return {
         ...n,
         _cat: (cat?.id ?? 'infra') as Exclude<CategoryId, 'all'>,
-        _color: cat?.color ?? '#6b7280',
+        _color: overlay ?? cat?.color ?? '#6b7280',
         _dim: false,
       }
     })

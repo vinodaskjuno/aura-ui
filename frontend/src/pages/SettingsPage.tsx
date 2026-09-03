@@ -378,7 +378,7 @@ export function SettingsPage() {
             ['Backend', 'FastAPI + Oxigraph (pyoxigraph)'],
             ['Ontology', 'OWL 2 — 3 Domains, 481 triples'],
             ['Graph Viz', 'Cytoscape.js (fcose + dagre)'],
-            ['AI Advisor', 'AWS Bedrock Claude Sonnet + ReAct'],
+            ['AI Engine', 'AWS Bedrock Claude Sonnet + ReAct'],
           ].map(([k, v]) => (
             <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <div style={{ fontSize: 11, color: 'var(--color-subtext)', fontFamily: 'var(--font-heading)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{k}</div>

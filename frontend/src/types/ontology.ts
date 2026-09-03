@@ -26,14 +26,48 @@ export interface OntologyNode {
   actualType?: string  // For type nodes
   nodeTypes?: string[]  // For group nodes
   nodeIds?: string[]  // For type nodes
+
+  // ── Provenance, carried on the node itself ───────────────────────────────
+  // Present on every graph payload (`_node_row` spreads all properties), so the
+  // canvas overlay can colour by source or freshness without a second fetch.
+  source?: string
+  pipeline?: string
+  trigger?: string
+  actor?: string
+  sourceDetail?: string
+  attribution?: string
+  lastSeenAt?: string
+  lastSeenRunId?: string
+  firstSeenAt?: string
+  firstSeenRunId?: string
+  confidence?: number
 }
 
 export interface OntologyLink {
+  /** Engine element id. Returned by the API's `_link_row`; the type simply never
+   *  declared it, which is why an edge could not be looked up for its trace. */
+  id?: string
   source: string | OntologyNode
   target: string | OntologyNode
   type: string
   color: string
   count?: number
+
+  // ── Provenance, carried on the edge itself ───────────────────────────────
+  // `prov_source` is the renamed provenance source: force-graph mutates a link's
+  // own `source` field into a node object in place, so the backend moves it aside.
+  prov_source?: string
+  provSource?: string
+  pipeline?: string
+  trigger?: string
+  actor?: string
+  sourceDetail?: string
+  attribution?: string
+  lastSeenAt?: string
+  lastSeenRunId?: string
+  firstSeenAt?: string
+  confidence?: number
+  factType?: string
 }
 
 export interface GraphData {

@@ -12,6 +12,9 @@ import { useMemo } from 'react'
 import OntologyLegend, { type LegendEdgeEntry, type LegendNodeEntry } from '../OntologyLegend'
 import { countByType } from './lensSelectors'
 import { hashColor } from './lensFormat'
+import { overlayLegend } from '../../provenance/overlayPalette'
+import { useProvenanceOverlayStore } from '../../../store/provenanceOverlayStore'
+import { useGraphTheme } from '../../../hooks/useGraphTheme'
 import type { LensDataContext, LensDefinition, LensLayoutOption } from './lensTypes'
 
 interface Props {
@@ -26,7 +29,27 @@ const MAX_NODE_ROWS = 24
 const MAX_EDGE_ROWS = 14
 
 export default function LensLegend({ lens, layout, ctx, isPresentationMode, topOffset }: Props) {
+  const overlayMode = useProvenanceOverlayStore(s => s.mode)
+  const gt = useGraphTheme()
+
   const nodeEntries = useMemo<LegendNodeEntry[]>(() => {
+    // With an overlay on, the type palette is not what is on screen. A legend that
+    // keeps describing types while the graph is coloured by source is worse than
+    // no legend — it actively teaches the wrong mapping.
+    if (overlayMode !== 'type') {
+      const counts = countByType(ctx.nodes, ctx.typeOf)
+      const total = [...counts.values()].reduce((a, b) => a + b, 0)
+      return overlayLegend(overlayMode, gt.isDark).map(entry => ({
+        label: entry.label,
+        color: entry.color,
+        count: entry.key === 'unattributed'
+          ? ctx.nodes.filter(n => {
+              const a = (n as unknown as Record<string, unknown>).attribution
+              return !a || a === 'none' || a === 'pre-trace'
+            }).length
+          : undefined,
+      })).filter(() => total > 0)
+    }
     const counts = countByType(ctx.nodes, ctx.typeOf)
     const rows: LegendNodeEntry[] = []
     for (const [label, count] of counts) {
@@ -40,7 +63,7 @@ export default function LensLegend({ lens, layout, ctx, isPresentationMode, topO
       })
     }
     return rows.sort((a, b) => (b.count ?? 0) - (a.count ?? 0)).slice(0, MAX_NODE_ROWS)
-  }, [ctx, lens])
+  }, [ctx, lens, overlayMode, gt.isDark])
 
   const edgeEntries = useMemo<LegendEdgeEntry[]>(() => {
     const counts = new Map<string, number>()

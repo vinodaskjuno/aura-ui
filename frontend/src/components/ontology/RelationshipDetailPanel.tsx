@@ -1,5 +1,9 @@
 import type { OntologyLink, OntologyNode } from '../../types/ontology'
+import { useState } from 'react'
 import { useGraphTheme } from '../../hooks/useGraphTheme'
+import LineageRibbon from '../provenance/LineageRibbon'
+import TracePanel from '../provenance/TracePanel'
+import { useTrace } from '../provenance/useTrace'
 
 // Inline color helper (matches OntologyGraph palette)
 const NODE_TYPE_COLORS: Record<string, string> = {
@@ -30,6 +34,8 @@ interface Props {
   onClose: () => void
   onGoToSource: (node: OntologyNode) => void
   onGoToTarget: (node: OntologyNode) => void
+  /** Open the ingestion run that wrote this edge. */
+  onOpenRun?: (runId: string) => void
 }
 
 function NodeCard({ node, label }: { node: OntologyNode | null; label: string }) {
@@ -72,9 +78,18 @@ function NodeCard({ node, label }: { node: OntologyNode | null; label: string })
 }
 
 export default function RelationshipDetailPanel({
-  link, allNodes, onClose, onGoToSource, onGoToTarget,
+  link, allNodes, onClose, onGoToSource, onGoToTarget, onOpenRun,
 }: Props) {
   const gt = useGraphTheme()
+  const [tab, setTab] = useState<'detail' | 'trace'>('detail')
+
+  // An edge is an assertion — "this service calls that one" — and until now the
+  // panel could not say who asserted it or on what evidence. That is exactly the
+  // claim people most want to interrogate, so edges get full parity with nodes.
+  const edgeId = link && typeof (link as any).id === 'string' ? (link as any).id as string : null
+  const { data: trace, loading: traceLoading, error: traceError, reload } =
+    useTrace('edge', edgeId)
+
   if (!link) return null
 
   const srcId = resolveId(link.source)
@@ -130,6 +145,52 @@ export default function RelationshipDetailPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+        {/* Where this relationship came from — same treatment as a node. */}
+        {edgeId && (
+          <LineageRibbon
+            trace={trace?.trace ?? null}
+            latestRun={trace?.latest ?? null}
+            loading={traceLoading}
+            onOpenRun={onOpenRun}
+            onOpenTrace={() => setTab('trace')}
+          />
+        )}
+
+        {edgeId && (
+          <div style={{
+            display: 'flex', gap: 4, marginTop: -8,
+            borderBottom: `1px solid ${gt.panelBorder}`,
+          }}>
+            {(['detail', 'trace'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                style={{
+                  padding: '6px 12px', background: 'none', border: 'none',
+                  borderBottom: tab === t ? `2px solid ${gt.accent}` : '2px solid transparent',
+                  color: tab === t ? gt.accent : gt.panelSubtext,
+                  fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: '.5px', cursor: 'pointer', marginBottom: -1,
+                  transition: 'all .15s',
+                }}
+              >
+                {t === 'detail' ? 'Details' : '\u2726 Trace'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {tab === 'trace' && edgeId && (
+          <TracePanel
+            data={trace}
+            loading={traceLoading}
+            error={traceError}
+            onOpenRun={onOpenRun}
+            onRetry={reload}
+          />
+        )}
+
+        {tab === 'detail' && <>
         {/* Node flow diagram */}
         <div className="flex items-center gap-2">
           <NodeCard node={sourceNode} label="Source" />
@@ -233,6 +294,7 @@ export default function RelationshipDetailPanel({
             </p>
           </div>
         </div>
+        </>}
       </div>
     </div>
   )
