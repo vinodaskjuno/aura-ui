@@ -1,6 +1,7 @@
 import { Outlet, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Sidebar } from './Sidebar'
+import { useSidebarStore, SIDEBAR_RAIL, SIDEBAR_WIDTH } from '../../store/sidebarStore'
 import { SDLCProvider } from '../../context/SDLCContext'
 import RouteErrorBoundary from './RouteErrorBoundary'
 
@@ -23,11 +24,20 @@ const pageTransition: any = { type: 'tween', ease: 'anticipate', duration: 0.25 
 
 export function AppShell() {
   const location = useLocation()
+  // The PINNED width only. A hover-expanded rail floats over the page instead of
+  // widening this, so brushing the sidebar never reflows what you were reaching for.
+  const collapsed = useSidebarStore(s => s.collapsed)
+  const glide = typeof window !== 'undefined'
+    && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ? 'none' : 'margin-left .18s ease' 
   return (
     <SDLCProvider>
       <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--color-bg)' }}>
         <Sidebar />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginLeft: 224,
+        <div style={{
+          flex: 1, display: 'flex', flexDirection: 'column',
+          marginLeft: collapsed ? SIDEBAR_RAIL : SIDEBAR_WIDTH,
+          transition: glide,
           height: '100vh', overflow: 'hidden' }}>
           <main style={{ flex: 1, padding: '24px', overflowY: 'auto', overflowX: 'hidden',
             height: '100%', display: 'flex', flexDirection: 'column' }}>

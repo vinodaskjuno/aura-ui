@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Moon, Sun, Monitor, User, LogOut, Users, ShieldCheck, ChevronRight, DollarSign, RotateCcw, Save, Loader2, Network } from 'lucide-react'
+import { Moon, Sun, Monitor, User, LogOut, DollarSign, RotateCcw, Save, Loader2, Network } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useThemeStore } from '../store/themeStore'
@@ -7,7 +7,6 @@ import { useAuthStore } from '../store/authStore'
 import { getBudgetConfig, updateBudgetConfig, getAllUserBudgets, resetUserBudget, type BudgetConfig, type AllUserBudget } from '../api/budget'
 import GraphBackendPanel from '../components/settings/GraphBackendPanel'
 import DangerZonePanel from '../components/settings/DangerZonePanel'
-import DirectoryPanel from '../components/settings/DirectoryPanel'
 
 type ThemeId = 'dark1' | 'dark2' | 'light'
 
@@ -178,58 +177,24 @@ export function SettingsPage() {
         </div>
       </motion.div>
 
-      {/* Admin shortcuts — only shown to admin+ */}
-      {(hasPermission('user_management') || hasPermission('role_management')) && (
-        <motion.div className="ov-card" style={{ padding: 24, marginBottom: 16 }}
-          initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15 }}>
-          <div className="section-label" style={{ marginBottom: 16 }}>Administration</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {hasPermission('user_management') && (
-              <motion.button
-                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                onClick={() => navigate('/settings/users')}
-                style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '14px 16px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Users size={16} color="var(--color-primary)" />
-                  <div>
-                    <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13, color: 'var(--color-text)' }}>User Management</div>
-                    <div style={{ fontSize: 11, color: 'var(--color-muted)', marginTop: 2 }}>Create, edit and deactivate users</div>
-                  </div>
-                </div>
-                <ChevronRight size={14} color="var(--color-muted)" />
-              </motion.button>
-            )}
-            {hasPermission('role_management') && (
-              <motion.button
-                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                onClick={() => navigate('/settings/roles')}
-                style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '14px 16px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <ShieldCheck size={16} color="var(--color-primary)" />
-                  <div>
-                    <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13, color: 'var(--color-text)' }}>Role Management</div>
-                    <div style={{ fontSize: 11, color: 'var(--color-muted)', marginTop: 2 }}>Configure permissions per role</div>
-                  </div>
-                </div>
-                <ChevronRight size={14} color="var(--color-muted)" />
-              </motion.button>
-            )}
-          </div>
-        </motion.div>
-      )}
-
-      {/* Directory — sits directly under Administration, because it is what
-          User Management becomes once AD is in charge of access. */}
+      {/* Directory configuration moved to its own page. It grew from a panel of
+          group mappings into the whole access model — organization roles, group
+          attachment, and the break-glass roster — which is more than a card on a
+          settings page can carry. Settings links to it rather than embedding it. */}
       {hasPermission('user_management') && (
         <motion.div className="ov-card" style={{ padding: 24, marginBottom: 16 }}
           initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <Network size={14} color="var(--color-primary)" />
-            <div className="section-label">Directory (LDAP / Active Directory)</div>
+            <div className="section-label">Access</div>
           </div>
-          <DirectoryPanel />
+          <p style={{ fontSize: 13, color: 'var(--color-subtext)', margin: '0 0 14px', maxWidth: '62ch' }}>
+            Who may sign in, and what they see — directory groups, organization roles
+            and the break-glass accounts.
+          </p>
+          <button className="ov-btn ov-btn-primary" onClick={() => navigate('/access')}>
+            Open Access
+          </button>
         </motion.div>
       )}
 

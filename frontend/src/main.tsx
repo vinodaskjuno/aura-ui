@@ -16,10 +16,13 @@ import './index.css'
 import App from './App'
 import { useAuthStore } from './store/authStore'
 import { useThemeStore } from './store/themeStore'
+import { useSidebarStore } from './store/sidebarStore'
 
 // Initialize stores from localStorage before rendering
 useAuthStore.getState().init()
 useThemeStore.getState().init()
+// Read before first paint so a collapsed rail does not flash open on reload.
+useSidebarStore.getState().init()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

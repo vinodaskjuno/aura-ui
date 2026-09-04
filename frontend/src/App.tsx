@@ -12,10 +12,9 @@ import LogsPage from './pages/LogsPage'
 import AIOpsPage from './pages/AIOpsPage'
 import ObservabilityPage from './pages/ObservabilityPage'
 import OntologyVisualizerPage from './pages/OntologyVisualizerPage'
+import AccessPage from './pages/settings/AccessPage'
 import LineageExplorerPage from './pages/LineageExplorerPage'
 import QAWorkspacePage from './pages/QAWorkspacePage'
-import UserManagementPage from './pages/settings/UserManagementPage'
-import RoleManagementPage from './pages/settings/RoleManagementPage'
 import SchedulerPage from './pages/SchedulerPage'
 import DevChatbotPage from './pages/DevChatbotPage'
 import AIObservabilityPage from './pages/AIObservabilityPage'
@@ -50,8 +49,7 @@ export default function App() {
           <Route path="/connectors"     element={<RoleProtectedRoute permission="connectors"><ConnectorsPage /></RoleProtectedRoute>} />
           <Route path="/mcp"            element={<RoleProtectedRoute permission="connectors"><MCPServersPage /></RoleProtectedRoute>} />
           <Route path="/settings"       element={<RoleProtectedRoute permission="settings"><SettingsPage /></RoleProtectedRoute>} />
-          <Route path="/settings/users" element={<RoleProtectedRoute permission="user_management"><UserManagementPage /></RoleProtectedRoute>} />
-          <Route path="/settings/roles" element={<RoleProtectedRoute permission="role_management"><RoleManagementPage /></RoleProtectedRoute>} />
+          <Route path="/access"         element={<RoleProtectedRoute permission="user_management"><AccessPage /></RoleProtectedRoute>} />
           <Route path="/upload"         element={<RoleProtectedRoute permission="upload"><UploadPage /></RoleProtectedRoute>} />
           <Route path="/logs"           element={<RoleProtectedRoute permission="logs"><LogsPage /></RoleProtectedRoute>} />
           <Route path="/scheduler"      element={<RoleProtectedRoute permission="scheduler"><SchedulerPage /></RoleProtectedRoute>} />
