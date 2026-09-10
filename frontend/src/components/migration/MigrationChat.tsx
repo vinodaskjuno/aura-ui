@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Check, Loader2, MessageSquare, Send, X } from 'lucide-react'
+import { useEffect as useEffectPhrase } from 'react'
+import { AlertTriangle, Check, MessageSquare, Send, X } from 'lucide-react'
 import { wsOrigin } from '../../api/wsUrl'
 import { useAuthStore } from '../../store/authStore'
 import type { MigrationSession } from '../../api/migration'
@@ -291,12 +292,7 @@ export default function MigrationChat({ session, onSession }: {
           )
         })}
 
-        {thinking && (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center',
-            fontSize: 11.5, color: 'var(--color-muted)' }}>
-            <Loader2 size={12} className="spin" /> thinking…
-          </div>
-        )}
+        {thinking && <ChatThinking />}
       </div>
 
       {/* Composer */}
@@ -322,6 +318,40 @@ export default function MigrationChat({ session, onSession }: {
           <Send size={13} />
         </button>
       </div>
+    </div>
+  )
+}
+
+
+/**
+ * The chat's own wait. Compact, because it sits inside a transcript rather than
+ * replacing the panel — but it still has to move, and it still has to change, or a
+ * slow reply is indistinguishable from a dropped connection.
+ */
+function ChatThinking() {
+  const phrases = [
+    'reading the current mapping…',
+    'working out what you are asking for…',
+    'checking it against the strategy…',
+    'drafting a change…',
+  ]
+  const [i, setI] = useState(0)
+  useEffectPhrase(() => {
+    const t = setInterval(() => setI(x => (x < phrases.length - 1 ? x + 1 : x)), 2600)
+    return () => clearInterval(t)
+  }, [phrases.length])
+
+  return (
+    <div role="status" aria-live="polite" style={{
+      display: 'flex', gap: 8, alignItems: 'center',
+      fontSize: 11.5, color: 'var(--color-muted)',
+    }}>
+      <span style={{ display: 'inline-flex', gap: 3 }}>
+        <span className="typing-dot" style={{ width: 5, height: 5 }} />
+        <span className="typing-dot" style={{ width: 5, height: 5 }} />
+        <span className="typing-dot" style={{ width: 5, height: 5 }} />
+      </span>
+      <span key={i} style={{ animation: 'fade-in .4s ease' }}>{phrases[i]}</span>
     </div>
   )
 }

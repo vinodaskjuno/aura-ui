@@ -9,6 +9,7 @@ import {
   type MappingRow, type MigrationProfile, type MigrationSession, type Verdict,
 } from '../../api/migration'
 import MigrationChat from './MigrationChat'
+import MigrationThinking, { type ThinkingKind } from './MigrationThinking'
 
 /**
  * Migration — convert this application onto a different platform.
@@ -69,6 +70,9 @@ export default function MigrationTab({ projectId }: { projectId: string }) {
   const [source, setSource] = useState('workfusion')
   const [target, setTarget] = useState('airflow')
   const [busy, setBusy] = useState('')
+  // Which long step is running, or null. Separate from `busy` because the
+  // short ones (save, download) want a disabled button, not a takeover panel.
+  const [thinking, setThinking] = useState<ThinkingKind | null>(null)
   const [err, setErr] = useState('')
   const [handoff, setHandoff] = useState<{ projectId: string } | null>(null)
 
@@ -84,7 +88,7 @@ export default function MigrationTab({ projectId }: { projectId: string }) {
   }, [projectId])
 
   const loadInferred = useCallback(async (s: MigrationSession) => {
-    setBusy('Reading your estate…')
+    setBusy('Reading your estate for component standards…')
     try {
       const r = await getInferred(s.sessionId, s.projectId)
       setMapping(r.mapping)
@@ -102,13 +106,13 @@ export default function MigrationTab({ projectId }: { projectId: string }) {
 
   // ── Actions ───────────────────────────────────────────────────────────────
   const begin = async () => {
-    setBusy('Opening…'); setErr('')
+    setBusy('Opening…'); setThinking('starting'); setErr('')
     try {
       const s = await startSession({ projectId, source, target })
       setSession(s)
       await loadInferred(s)
     } catch (e: any) { setErr(e?.response?.data?.detail ?? 'Could not start.') }
-    finally { setBusy('') }
+    finally { setBusy(''); setThinking(null) }
   }
 
   const saveMapping = async () => {
@@ -121,15 +125,15 @@ export default function MigrationTab({ projectId }: { projectId: string }) {
 
   const propose = async () => {
     if (!session) return
-    setBusy('Aura is analysing the application…'); setErr('')
+    setBusy('analysing'); setThinking('analysing'); setErr('')
     try { setSession(await runStrategy(session.sessionId, projectId)) }
     catch (e: any) { setErr(e?.response?.data?.detail ?? 'Could not produce a strategy.') }
-    finally { setBusy('') }
+    finally { setBusy(''); setThinking(null) }
   }
 
   const sendAnswers = async () => {
     if (!session) return
-    setBusy('Revising the strategy…'); setErr('')
+    setBusy('revising'); setThinking('revising'); setErr('')
     try {
       const payload = (session.questions || []).map(q => ({
         questionId: q.id, question: q.text, answer: answers[q.id] || '',
@@ -139,7 +143,7 @@ export default function MigrationTab({ projectId }: { projectId: string }) {
         comment.trim() ? [comment.trim()] : [])
       setSession(updated); setComment('')
     } catch (e: any) { setErr(e?.response?.data?.detail ?? 'Could not revise.') }
-    finally { setBusy('') }
+    finally { setBusy(''); setThinking(null) }
   }
 
   const lock = async () => {
@@ -199,8 +203,11 @@ export default function MigrationTab({ projectId }: { projectId: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {err && <Note tone="bad">{err}</Note>}
-      {busy && (
-        <Note tone="info"><Loader2 size={12} className="spin" /> {busy}</Note>
+      {thinking && (
+        <MigrationThinking kind={thinking} onHide={() => setThinking(null)} />
+      )}
+      {busy && !thinking && (
+        <Note tone="info"><Loader2 size={12} className="animate-spin" /> {busy}</Note>
       )}
 
       {/* ── 1. Target ──────────────────────────────────────────────────── */}

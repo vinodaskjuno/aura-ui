@@ -151,7 +151,7 @@ export default function AccessPage() {
 
   if (loading) {
     return <div style={{ padding: 28, color: 'var(--color-subtext)', fontSize: 13 }}>
-      <Loader2 size={14} className="spin" /> Loading access configuration…
+      <Loader2 size={14} className="animate-spin" /> Loading access configuration…
     </div>
   }
 
@@ -370,7 +370,7 @@ export default function AccessPage() {
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
           <button style={btn} onClick={save} disabled={busy}>
-            {busy ? <Loader2 size={13} className="spin" /> : <ShieldCheck size={13} />}
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
             Save
           </button>
           <button style={ghost} disabled={busy}
@@ -598,7 +598,7 @@ function BreakGlassRow({ account, onDone, onError }: {
             style={{ ...input, flex: 1, maxWidth: 300 }}
           />
           <button style={btn} onClick={rotate} disabled={busy || pw.length < 12}>
-            {busy ? <Loader2 size={12} className="spin" /> : null} Save
+            {busy ? <Loader2 size={12} className="animate-spin" /> : null} Save
           </button>
         </div>
       )}
