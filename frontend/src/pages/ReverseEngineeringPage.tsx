@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import {
   ScanSearch, Loader2, RefreshCw, GitBranch, Layers,
-  Code2, Database, Server, ArrowRight, ChevronRight,
+  Code2, Wand2, Database, Server, ArrowRight, ChevronRight,
   GitFork, Box,
 } from 'lucide-react'
 import {
@@ -13,6 +13,7 @@ import { projectsApi, type Project, type KnowledgeGraph } from '../api/projects'
 import { listServices, type ServiceRecord } from '../api/repoLoader'
 import ProjectsPanel from '../components/dev-chat/ProjectsPanel'
 import SOPTab from '../components/sop/SOPTab'
+import MigrationTab from '../components/migration/MigrationTab'
 
 // ── Language color map ────────────────────────────────────────────────────────
 const LANG_COLORS: Record<string, string> = {
@@ -39,7 +40,7 @@ const TECH_COLORS = [
   '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#a78bfa',
 ]
 
-type RETab = 'architecture' | 'api-map' | 'code' | 'data-flow' | 'sop'
+type RETab = 'architecture' | 'api-map' | 'code' | 'data-flow' | 'migration' | 'sop'
 
 // ── Empty state ───────────────────────────────────────────────────────────────
 function EmptyState() {
@@ -560,6 +561,7 @@ function ProjectAnalysisView({
     { id: 'api-map',      label: 'API Map',      icon: <GitFork size={13} /> },
     { id: 'code',         label: 'Code Analysis', icon: <Code2 size={13} /> },
     { id: 'data-flow',    label: 'Data Flow',     icon: <GitBranch size={13} /> },
+    { id: 'migration',    label: 'Migration',     icon: <Wand2 size={13} /> },
     { id: 'sop',          label: 'SOP',           icon: <ChevronRight size={13} /> },
   ]
 
@@ -642,10 +644,15 @@ function ProjectAnalysisView({
             {tab === 'data-flow' && kg && (
               <DataFlowTab kg={kg} services={services} />
             )}
+            {tab === 'migration' && (
+              <MigrationTab projectId={project.projectId} />
+            )}
             {tab === 'sop' && (
               <SOPTab projectId={project.projectId} stage="reverse_engineering" projectName={project.name} />
             )}
-            {!kg && tab !== 'sop' && (
+            {/* Migration reads the graph server-side, so it does not need `kg` here
+                and must not be hidden by the no-graph placeholder. */}
+            {!kg && tab !== 'sop' && tab !== 'migration' && (
               <div className="ov-card" style={{ padding: 32, textAlign: 'center' }}>
                 <div style={{ fontSize: 13, color: 'var(--color-muted)' }}>
                   Failed to load knowledge graph data. Try analysing the project first.
