@@ -82,6 +82,9 @@ export interface MigrationSession {
   mapping: MappingRow[]
   conversionShape: { granularity: string; extractShared: boolean; repoLayout: string }
   strategy: Strategy
+  /** The mapping changed after this strategy was produced, so it no longer
+   *  describes what would be generated. Re-analyse before converting. */
+  strategyStale?: boolean
   archivedStrategies: { target: string; archivedAt: string }[]
   questions: Strategy['questions']
   answers: { questionId: string; question: string; answer: string }[]

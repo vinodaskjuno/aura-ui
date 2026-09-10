@@ -357,6 +357,14 @@ export default function MigrationTab({ projectId }: { projectId: string }) {
         <Card step={4} title="Migration strategy"
               note={locked ? 'Finalized.' : 'Review, comment to amend, then finalize.'}>
 
+          {session.strategyStale && (
+            <Note tone="warn">
+              <AlertTriangle size={12} /> The component mapping changed after this
+              strategy was written, so it does not describe what would be generated
+              now. Re-analyse before converting.
+            </Note>
+          )}
+
           {strategy.warning && (
             <Note tone="warn">
               <AlertTriangle size={12} /> {strategy.warning}
