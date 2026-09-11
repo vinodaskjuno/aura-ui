@@ -4,7 +4,7 @@ import {
   PlayCircle,
   FolderOpen, Download, FolderGit2, ScanSearch, ScanLine, Code2,
   GitPullRequest, FlaskConical, CheckCircle2, AlertCircle,
-  BarChart3, Search, Filter, GitFork,
+  BarChart3, Search, Filter, GitFork, Trash2,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -60,10 +60,13 @@ export interface ProjectStatusBoardProps {
   selectedProjectId: string | null
   onSelect: (project: any) => void
   onStartRun: (project: any) => void
+  /** Absent means no delete control — the board is also used where deleting makes no
+   *  sense. */
+  onDelete?: (project: any) => void
 }
 
 export default function ProjectStatusBoard({
-  projects, selectedProjectId, onSelect, onStartRun,
+  projects, selectedProjectId, onSelect, onStartRun, onDelete,
 }: ProjectStatusBoardProps) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -153,6 +156,7 @@ export default function ProjectStatusBoard({
                 isSelected={project.projectId === selectedProjectId}
                 onSelect={onSelect}
                 onStartRun={onStartRun}
+                onDelete={onDelete}
                 animDelay={i * 0.035}
               />
             ))}
@@ -169,10 +173,12 @@ interface ProjectCardProps {
   isSelected: boolean
   onSelect: (p: any) => void
   onStartRun: (p: any) => void
+  onDelete?: (p: any) => void
   animDelay: number
 }
 
-function ProjectCard({ project, isSelected, onSelect, onStartRun, animDelay }: ProjectCardProps) {
+function ProjectCard({ project, isSelected, onSelect, onStartRun, onDelete,
+                      animDelay }: ProjectCardProps) {
   const status = (project.status as string | undefined) ?? 'CREATED'
   const cfg = QA_STATUS_CONFIG[status] ?? FALLBACK_STATUS
   const StatusIcon = cfg.icon
@@ -306,6 +312,21 @@ function ProjectCard({ project, isSelected, onSelect, onStartRun, animDelay }: P
             }}>
             <BarChart3 size={11} /> Open
           </button>
+          {onDelete && (
+            <button
+              onClick={e => { e.stopPropagation(); onDelete(project) }}
+              title={`Delete ${project.name}`}
+              aria-label="Delete project"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '5px 8px', borderRadius: 7, cursor: 'pointer', flexShrink: 0,
+                background: 'rgba(239,68,68,0.10)',
+                border: '1px solid rgba(239,68,68,0.30)',
+                color: '#ef4444', transition: 'all 0.15s',
+              }}>
+              <Trash2 size={11} />
+            </button>
+          )}
         </div>
       </div>
     </motion.div>

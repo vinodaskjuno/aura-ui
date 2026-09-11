@@ -1328,6 +1328,13 @@ export default function DevChatbotPage() {
               onSelect={handlePanelProjectSelect}
               selectedId={selectedProject?.id}
               onCreateNew={handleWizardComplete}
+              onDeleted={id => {
+                // The chat, its context and the query all key off the project. Left
+                // set, the next message would be answered against a deleted project.
+                if (selectedProject?.id !== id) return
+                setSelectedProject(null)
+                setQuery('')
+              }}
             />
           </div>
 

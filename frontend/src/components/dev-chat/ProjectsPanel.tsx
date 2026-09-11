@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   FolderOpen, Plus, Search, Clock, GitBranch, RefreshCw,
-  X, ChevronRight, Loader2,
+  X, ChevronRight, Loader2, Trash2,
 } from 'lucide-react'
 import { projectsApi, type Project } from '../../api/projects'
 import CreateProjectWizard, { type WizardResult } from './CreateProjectWizard'
+import ConfirmDeleteDialog from '../ui/ConfirmDeleteDialog'
 
 export type { WizardResult }
 
@@ -12,6 +13,11 @@ interface ProjectsPanelProps {
   onSelect: (project: Project) => void
   selectedId?: string
   onCreateNew?: (result: WizardResult) => void
+  /** A project was deleted. The panel refreshes itself; this exists so the PAGE can
+   *  drop whatever it was holding about it — the open chat, the knowledge graph, the
+   *  poller keyed on its id. Without it the page keeps rendering a project that is
+   *  gone. */
+  onDeleted?: (projectId: string) => void
 }
 
 const STATUS_CONFIG: Record<string, { color: string; label: string; pulse?: boolean }> = {
@@ -41,11 +47,13 @@ function formatDate(iso: string): string {
 }
 
 // ── Main ProjectsPanel ────────────────────────────────────────────────────────
-export default function ProjectsPanel({ onSelect, selectedId, onCreateNew }: ProjectsPanelProps) {
+export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
+                                       onDeleted }: ProjectsPanelProps) {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [doomed, setDoomed] = useState<Project | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -73,6 +81,22 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew }: Pro
           onComplete={result => {
             setShowCreate(false)
             onCreateNew?.(result)
+          }}
+        />
+      )}
+
+      {doomed && (
+        <ConfirmDeleteDialog
+          projectId={doomed.projectId}
+          projectName={doomed.name}
+          onCancel={() => setDoomed(null)}
+          onDeleted={id => {
+            setDoomed(null)
+            // Drop it locally at once rather than waiting for the refetch, so the row
+            // cannot be clicked in the gap.
+            setProjects(prev => prev.filter(x => x.projectId !== id))
+            onDeleted?.(id)
+            load()
           }}
         />
       )}
@@ -149,10 +173,15 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew }: Pro
             </div>
           ) : (
             filtered.map(p => (
-              <button
+              // A <div role="button">, not a <button>: nesting the delete control
+              // inside a button is invalid HTML and the inner click never fires.
+              <div
                 key={p.projectId}
-                type="button"
+                role="button"
+                tabIndex={0}
+                className="proj-row"
                 onClick={() => onSelect(p)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onSelect(p) }}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'flex-start', gap: 8,
                   padding: '9px 10px', borderRadius: 8, marginBottom: 3,
@@ -162,14 +191,14 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew }: Pro
                 }}
                 onMouseEnter={e => {
                   if (p.projectId !== selectedId) {
-                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-card)'
-                    ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-border)'
+                    (e.currentTarget as HTMLDivElement).style.background = 'var(--color-card)'
+                    ;(e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border)'
                   }
                 }}
                 onMouseLeave={e => {
                   if (p.projectId !== selectedId) {
-                    (e.currentTarget as HTMLButtonElement).style.background = 'none'
-                    ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'
+                    (e.currentTarget as HTMLDivElement).style.background = 'none'
+                    ;(e.currentTarget as HTMLDivElement).style.borderColor = 'transparent'
                   }
                 }}
               >
@@ -214,8 +243,19 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew }: Pro
                   </div>
                 </div>
 
+                <button
+                  type="button"
+                  className="proj-del"
+                  title={`Delete ${p.name}`}
+                  onClick={e => { e.stopPropagation(); setDoomed(p) }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer',
+                           padding: 3, color: '#ef4444', flexShrink: 0, marginTop: 5,
+                           opacity: 0, transition: 'opacity 0.15s' }}>
+                  <Trash2 size={12} />
+                </button>
+
                 <ChevronRight size={12} style={{ color: 'var(--color-muted)', flexShrink: 0, marginTop: 7 }} />
-              </button>
+              </div>
             ))
           )}
         </div>
@@ -223,6 +263,7 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew }: Pro
 
       <style>{`
         @keyframes panel-pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+        .proj-row:hover .proj-del { opacity: 1 !important; }
         @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
       `}</style>
     </>

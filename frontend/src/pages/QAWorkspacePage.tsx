@@ -13,6 +13,7 @@ import RunDetail from '../components/qa/RunDetail'
 import RunProgress from '../components/qa/RunProgress'
 import RunnerPanel from '../components/qa/RunnerPanel'
 import RunnerStatusChip from '../components/qa/RunnerStatusChip'
+import ConfirmDeleteDialog from '../components/ui/ConfirmDeleteDialog'
 import ProjectStatusBoard from '../components/qa/ProjectStatusBoard'
 import ActivityFeed from '../components/qa/ActivityFeed'
 import CoverageSummary from '../components/qa/CoverageSummary'
@@ -406,6 +407,7 @@ export default function QAWorkspacePage() {
   const [tab, setTab]                     = useState<Tab>('runs')
   const [openRunId, setOpenRunId]         = useState<string | null>(null)
   const [launchProject, setLaunchProject] = useState<any>(null)
+  const [doomed, setDoomed] = useState<any>(null)
   const [active, setActive]               = useState<any[]>([])
   const [coverage, setCoverage]           = useState<QaCoverage | null>(null)
   const [coverageRun, setCoverageRun]     = useState('')
@@ -566,6 +568,7 @@ export default function QAWorkspacePage() {
             selectedProjectId={selectedProject?.projectId ?? null}
             onSelect={handleSelectProject}
             onStartRun={p => setLaunchProject(p)}
+            onDelete={p => setDoomed(p)}
           />
         )}
       </div>
@@ -717,6 +720,28 @@ export default function QAWorkspacePage() {
           </div>
         )}
       </div>
+
+      {doomed && (
+        <ConfirmDeleteDialog
+          projectId={doomed.projectId}
+          projectName={doomed.name}
+          onCancel={() => setDoomed(null)}
+          onDeleted={id => {
+            setDoomed(null)
+            // `loadProjects` auto-selects with `prev ?? data[0]`, so a plain refetch
+            // does NOT clear a stale selection — and two pollers key off
+            // `selectedProject?.projectId` and would keep asking about a deleted one.
+            if (selectedProject?.projectId === id) {
+              setSelectedProject(null)
+              setSuites([])
+              setOpenRunId(null)
+              setActive([])
+              setCoverage(null)
+            }
+            loadProjects()
+          }}
+        />
+      )}
 
       {/* ── Run launcher ─────────────────────────────────────────────────── */}
       <AnimatePresence>

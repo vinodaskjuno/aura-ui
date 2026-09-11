@@ -731,6 +731,14 @@ export default function ReverseEngineeringPage() {
             <ProjectsPanel
               onSelect={handleProjectSelect}
               selectedId={selectedProject?.projectId}
+              onDeleted={id => {
+                // The right-hand pane would otherwise keep rendering the knowledge
+                // graph of a project that no longer exists.
+                if (selectedProject?.projectId !== id) return
+                setSelectedProject(null)
+                setKg(null)
+                setServices([])
+              }}
             />
           </div>
         </div>

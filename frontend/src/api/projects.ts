@@ -40,13 +40,68 @@ export interface ActivityEntry {
   message: string
 }
 
+/** One store, and how many of this project's rows are in it. */
+export interface DeletionTable {
+  table:  string
+  rows:   number
+  /** Kept on purpose — the `why` says which reason. */
+  kept:   boolean
+  why:    string
+  method: string
+}
+
+/** Something that will NOT be deleted, and why the user should be told. */
+export interface DeletionExclusion {
+  what:   string
+  detail: string
+  count:  number | null
+}
+
+export interface DeletionPreview {
+  projectId:     string
+  projectName:   string
+  /** What must be typed to confirm — the project's name. */
+  confirmPhrase: string
+  owner:         { userId?: string; username?: string }
+  dynamodb:      { totalRows: number; tables: DeletionTable[] }
+  s3:            { objects: number; bytes: number
+                   prefixes: { bucket: string; prefix: string
+                               objects: number; bytes: number }[] }
+  workspace:     { exists: boolean; path: string; files: number; bytes: number }
+  graph:         { nodes: number; engines: Record<string, {
+                     ok: boolean; error?: string
+                     byLabel?: Record<string, number>
+                     excluded?: Record<string, number>
+                     crossingEdges?: number }> }
+  excluded:      DeletionExclusion[]
+  /** Reasons it cannot run yet — a pending outbox, an engine down, a live QA run. */
+  blockers:      string[]
+  canDelete:     boolean
+}
+
+export interface DeletionResult {
+  ok:         boolean
+  dryRun?:    boolean
+  retryable?: boolean
+  report:     Record<string, unknown>
+}
+
 export const projectsApi = {
   list: () => client.get<Project[]>('/api/projects'),
   create: (data: any) => client.post<Project>('/api/projects', data),
   seedSamples: () => client.post('/api/projects/seed/samples'),
   get: (id: string) => client.get<Project>(`/api/projects/${id}`),
   update: (id: string, data: any) => client.put<Project>(`/api/projects/${id}`, data),
-  delete: (id: string) => client.delete(`/api/projects/${id}`),
+  /** What deleting this project would remove, and what it would spare. */
+  deletionPreview: (id: string) =>
+    client.get<DeletionPreview>(`/api/projects/${id}/deletion-preview`),
+  /** `confirm` must equal the project's NAME — the backend refuses anything else.
+   *  The realistic accident is deleting the wrong project, and a constant word like
+   *  "DELETE" does nothing to prevent that. */
+  delete: (id: string, confirm: string, dryRun = false) =>
+    client.request<DeletionResult>({
+      url: `/api/projects/${id}`, method: 'DELETE', data: { confirm, dryRun },
+    }),
   getConnectors: (id: string) => client.get(`/api/projects/${id}/connectors`),
   getKnowledgeGraph: (id: string) => client.get<KnowledgeGraph>(`/api/projects/${id}/knowledge-graph`),
   getActivity: (id: string) => client.get<ActivityEntry[]>(`/api/projects/${id}/activity`),
