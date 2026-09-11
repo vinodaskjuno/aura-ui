@@ -161,6 +161,8 @@ export interface QaActiveRun {
   totalCases?:      number
   /** What the run is doing right now, in words — "aws emulator ready on :4566". */
   phaseDetail?: string
+  /** Why it ended badly, when it did — "cancelled by alice". */
+  reason?: string
   kinds?: CaseKind[]
   /** Floci containers serving this run, as the runner last reported them. */
   emulators?: LiveEmulator[]
@@ -345,6 +347,16 @@ export const qaApi = {
   projectCoverage: (projectId: string) =>
     client.get<{ projectId: string; runId: string; ranAt: string; coverage: QaCoverage | null }>(
       `/api/qa/projects/${projectId}/coverage`),
+  /** Stop a queued or executing run.
+   *
+   *  It does NOT reach the runner — that polls and has no inbound port, and may be a
+   *  laptop that is asleep. It takes the run out of the live set, so the Results tab
+   *  stops showing something that will never finish and a project delete is no longer
+   *  blocked by it. */
+  cancelRun: (projectId: string, runId: string) =>
+    client.post<{ ok: boolean; runId: string; status: string }>(
+      `/api/qa/runs/${runId}/cancel`, null, { params: { projectId } }),
+
   /** A single run's counters. A GetItem on the backend — safe to poll. */
   runProgress: (projectId: string, runId: string) =>
     client.get(`/api/qa/runs/${runId}/progress`, { params: { projectId } }),

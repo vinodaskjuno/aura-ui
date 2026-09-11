@@ -517,6 +517,24 @@ export default function QAWorkspacePage() {
       : null
   }
 
+  /** Stop a run that is queued or wedged.
+   *
+   *  It cannot reach the runner — that polls and has no inbound port. What it does is
+   *  take the run out of the live set, which is what stops the Results tab showing a
+   *  run that will never finish, and what unblocks deleting the project.
+   */
+  const cancelRun = async (runId: string) => {
+    if (!selectedProject) return
+    try {
+      await qaApi.cancelRun(selectedProject.projectId as string, runId)
+    } catch { /* a 409 means it finished first — the refresh below shows the truth */ }
+    try {
+      const { data } = await qaApi.activeRuns(selectedProject.projectId as string)
+      setActive(data.active ?? [])
+    } catch { /* the poller will catch up */ }
+    handleRefreshSuites()
+  }
+
   const rerun = async (kinds: CaseKind[]) => {
     if (!selectedProject) return
     try {
@@ -645,7 +663,8 @@ export default function QAWorkspacePage() {
                     {active.length > 0 && (
                       <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
                         {active.map(run => (
-                          <RunProgress key={run.runId} run={run} />
+                          <RunProgress key={run.runId} run={run}
+                                       onCancel={cancelRun} />
                         ))}
                       </div>
                     )}

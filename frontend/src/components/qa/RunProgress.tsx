@@ -48,6 +48,12 @@ function phaseIndex(run: QaActiveRun): number {
   return found >= 0 ? found : 1
 }
 
+/** Nothing reported for 10 minutes. The reaper's own threshold is 15. */
+function stale(since: string): boolean {
+  const ms = Date.now() - new Date(since).getTime()
+  return Number.isFinite(ms) && ms > 10 * 60 * 1000
+}
+
 function elapsed(from: string): string {
   const ms = Date.now() - new Date(from).getTime()
   if (!Number.isFinite(ms) || ms < 0) return ''
@@ -55,7 +61,12 @@ function elapsed(from: string): string {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
-export default function RunProgress({ run }: { run: QaActiveRun }) {
+export default function RunProgress({ run, onCancel }: {
+  run: QaActiveRun
+  /** Absent means no cancel control. */
+  onCancel?: (runId: string) => void
+}) {
+  const [cancelling, setCancelling] = useState(false)
   // Re-render once a second so the elapsed clock moves between polls. Without it the
   // whole panel is frozen for five seconds at a time and reads as stalled.
   const [, tick] = useState(0)
@@ -83,6 +94,21 @@ export default function RunProgress({ run }: { run: QaActiveRun }) {
           border: '1px solid rgba(245,158,11,0.3)' }}>
           {run.status}
         </span>
+        {onCancel && (
+          <button
+            onClick={async () => { setCancelling(true); await onCancel(run.runId) }}
+            disabled={cancelling}
+            title="Stop this run"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4,
+                     fontSize: 10.5, fontWeight: 700, padding: '2px 8px',
+                     borderRadius: 20, cursor: cancelling ? 'default' : 'pointer',
+                     background: 'rgba(239,68,68,0.10)',
+                     border: '1px solid rgba(239,68,68,0.30)', color: '#ef4444' }}>
+            {cancelling ? <Loader2 size={10} className="animate-spin" />
+                        : <XCircle size={10} />}
+            Stop
+          </button>
+        )}
         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-muted)' }}>
           {run.runner
             ? `on ${run.runner}`
@@ -139,6 +165,16 @@ export default function RunProgress({ run }: { run: QaActiveRun }) {
           </div>
           <ProgressBar progress={progress} failing={failing} height={4} />
         </div>
+
+      {/* A run that has not moved in a long time is the reason Stop exists: the
+          reaper only catches one that has gone QUIET, and a wedged runner keeps
+          reporting. */}
+      {run.updatedAt && stale(run.updatedAt) && (
+        <span style={{ fontSize: 11, color: '#f59e0b' }}>
+          No progress for {elapsed(run.updatedAt)} — the runner may have wedged.
+          Stop it if it is not coming back.
+        </span>
+      )}
 
       {/* The Floci containers serving this run, live from its heartbeat. */}
       {!!run.emulators?.length && (
