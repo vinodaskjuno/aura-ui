@@ -9,6 +9,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
 import { getTokenMetrics, type MetricPeriod } from '../../api/metrics'
+import { useAuthStore } from '../../store/authStore'
 import { aiopsGatewayApi, type TimeseriesRow } from '../../api/aiopsGateway'
 
 interface MetricsDashboardProps {
@@ -198,6 +199,15 @@ function AnimatedMetricCard({ title, value, change, icon, color, delay = 0 }: Me
 }
 
 export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
+  // Spend is an administrator's concern rendered, until now, on a developer's
+  // workspace. A developer cannot act on a dollar figure — they have no budget
+  // to move and no way to see whose usage it is — so the money is shown to the
+  // roles that own it and the usage is shown to everyone. What stays for a
+  // developer is the part they CAN act on: how many tokens their own work
+  // costs in context, and how the cache is behaving.
+  const role = useAuthStore(s => s.role)
+  const showCost = role === 'admin' || role === 'super_admin'
+
   const [period, setPeriod] = useState<MetricPeriod>('week')
   const [metrics, setMetrics] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -304,7 +314,7 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
     })
   }
 
-  if (costTrend !== undefined) {
+  if (showCost && costTrend !== undefined) {
     const up = costTrend > 0
     insights.push({
       title: `${up ? '⚠' : '✓'} Cost trend: ${up ? '+' : ''}${costTrend.toFixed(0)}%`,
@@ -313,7 +323,7 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
     })
   }
 
-  if (topModel && topModelShare > 0) {
+  if (showCost && topModel && topModelShare > 0) {
     insights.push({
       title: `ℹ ${topModel.model}: ${topModelShare.toFixed(0)}% of spend`,
       detail: `$${(topModel.cost ?? 0).toFixed(4)} across ${topModel.calls ?? 0} calls`
@@ -429,14 +439,24 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
           color="#6366f1"
           delay={0}
         />
-        <AnimatedMetricCard
-          title="Total Cost"
-          value={`$${metrics.totalCost.toFixed(2)}`}
-          change={costTrend}
-          icon={<DollarSign size={20} />}
-          color="#f59e0b"
-          delay={0.1}
-        />
+        {showCost ? (
+          <AnimatedMetricCard
+            title="Total Cost"
+            value={`$${metrics.totalCost.toFixed(2)}`}
+            change={costTrend}
+            icon={<DollarSign size={20} />}
+            color="#f59e0b"
+            delay={0.1}
+          />
+        ) : (
+          <AnimatedMetricCard
+            title="Cache Hit Rate"
+            value={`${cacheHitRate.toFixed(0)}%`}
+            icon={<Zap size={20} />}
+            color="#f59e0b"
+            delay={0.1}
+          />
+        )}
         <AnimatedMetricCard
           title="Sessions"
           value={metrics.totalSessions}
@@ -445,13 +465,25 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
           color="#10b981"
           delay={0.2}
         />
-        <AnimatedMetricCard
-          title="Avg Cost/Session"
-          value={`$${avgCostPerSession.toFixed(4)}`}
-          icon={<Activity size={20} />}
-          color="#ec4899"
-          delay={0.3}
-        />
+        {showCost ? (
+          <AnimatedMetricCard
+            title="Avg Cost/Session"
+            value={`$${avgCostPerSession.toFixed(4)}`}
+            icon={<Activity size={20} />}
+            color="#ec4899"
+            delay={0.3}
+          />
+        ) : (
+          <AnimatedMetricCard
+            title="Tokens/Session"
+            value={metrics.totalSessions > 0
+              ? Math.round(totalTokens / metrics.totalSessions).toLocaleString()
+              : '—'}
+            icon={<Activity size={20} />}
+            color="#ec4899"
+            delay={0.3}
+          />
+        )}
       </div>
 
       {/* Charts grid */}
@@ -556,8 +588,8 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
           </ResponsiveContainer>
         </motion.div>
 
-        {/* Cost over time - Line chart */}
-        <motion.div
+        {/* Cost over time — admin only, for the same reason as the KPI cards. */}
+        {showCost && <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, delay: 0.5 }}
@@ -628,7 +660,7 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
               />
             </LineChart>
           </ResponsiveContainer>
-        </motion.div>
+        </motion.div>}
       </div>
 
       {/* Bottom row - Model distribution and bar chart */}
@@ -684,7 +716,7 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
                 Token distribution across models
               </p>
             </div>
-          </div>4
+          </div>
           <ResponsiveContainer width="100%" height={280}>
             <RePieChart>
               <Pie
@@ -731,9 +763,11 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
                   <span style={{ fontSize: '11px', color: 'var(--color-muted)' }}>
                     {model.value.toLocaleString()} tokens
                   </span>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>
-                    ${model.cost.toFixed(4)}
-                  </span>
+                  {showCost && (
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>
+                      ${model.cost.toFixed(4)}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -786,7 +820,7 @@ export default function MetricsDashboard({ onClose }: MetricsDashboardProps) {
                 Total tokens processed per day
               </p>
             </div>
-          </div>4
+          </div>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={historicalData.slice(-7)}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />

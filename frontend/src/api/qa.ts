@@ -34,6 +34,11 @@ export interface TestRun {
   totalPassed?: number
   totalFailed?: number
   totalSkipped?: number
+  /** Cases the runner could not emulate — no Floci image for the dependency. */
+  totalUnemulated?: number
+  /** Cases PLANNED. Kept on the finished row so a completed run can still
+   *  answer "how many were there", which the pass/fail tallies alone cannot. */
+  totalCases?: number
   createdAt: string
   completedAt?: string
   artifacts?: string[]
@@ -229,6 +234,11 @@ export interface QaCoverage {
   executionPct: number | null
   skipped:      number
   unemulated:   number
+  /** skipped + unemulated: how much of the plan could never have worked. A run
+   *  reporting "0 failed" and a run where nothing executed are otherwise
+   *  indistinguishable, and the second is the common case. */
+  untestable:    number
+  untestablePct: number | null
   /** Nodes the project has that this run's plan never referenced — an excluded kind,
    *  or a node added since. Counted in the denominator, so the UI must account for
    *  them or the arithmetic looks wrong on screen. */

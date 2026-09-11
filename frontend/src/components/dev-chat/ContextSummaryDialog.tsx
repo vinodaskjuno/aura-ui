@@ -96,7 +96,7 @@ export default function ContextSummaryDialog({ fromModel: _fromModel, toModel, o
               opacity: generating ? 0.8 : 1,
             }}
           >
-            {generating && <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} />}
+            {generating && <RefreshCw size={13} className="animate-spin" />}
             {generating ? 'Summarizing...' : 'Switch Model'}
           </button>
         </div>

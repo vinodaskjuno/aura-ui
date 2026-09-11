@@ -1,11 +1,19 @@
 import { create } from 'zustand'
 
-export type RoleType = 'user_dev' | 'user_qa' | 'user_ops' | 'admin' | 'super_admin' | 'ontology_maintainer'
+// Mirrors ROLE_PERMISSIONS in aura-api/src/services/auth_service.py.
+// project_manager and product_owner hold `dashboard` and nothing else — they
+// consume the picture the working roles produce rather than operating anything.
+export type RoleType =
+  | 'user_dev' | 'user_qa' | 'user_ops'
+  | 'project_manager' | 'product_owner'
+  | 'admin' | 'super_admin' | 'ontology_maintainer'
 
 export const ROLE_LABELS: Record<RoleType, string> = {
   user_dev: 'User + Dev',
   user_qa: 'User + QA',
   user_ops: 'User + Ops',
+  project_manager: 'Project Manager',
+  product_owner: 'Product Owner',
   admin: 'Admin',
   super_admin: 'Super Admin',
   ontology_maintainer: 'Ontology Maintainer',

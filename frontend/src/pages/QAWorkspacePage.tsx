@@ -18,7 +18,9 @@ import ProjectStatusBoard from '../components/qa/ProjectStatusBoard'
 import ActivityFeed from '../components/qa/ActivityFeed'
 import CoverageSummary from '../components/qa/CoverageSummary'
 import { useQaRunners } from '../components/qa/useQaRunners'
-import { pctColor } from '../components/qa/progress'
+import { Metric, type MetricProps } from '../components/ui/Metric'
+import { pctState, inversePctState } from '../components/ui/metricState'
+import { useAuthStore } from '../store/authStore'
 
 // ── Tab definition ────────────────────────────────────────────────────────────
 type Tab = 'runs' | 'coverage' | 'runner' | 'activity'
@@ -360,40 +362,93 @@ function TestRunsTab({ suites, projectId, onViewArtifacts, onRefresh }: {
 }
 
 // ── Stats Bar ─────────────────────────────────────────────────────────────────
+/**
+ * What this screen reports depends on who is looking at it.
+ *
+ * A QA engineer needs to know what the last run could not reach; a developer
+ * only wants to know whether their project is tested at all; an operator cares
+ * about the fleet and the queue. One bar showing all of it serves none of them,
+ * which is what "Total Runs · Pass Rate · Last Run · Coverage" was.
+ *
+ * Derived entirely from data this page has already fetched — no extra request.
+ */
 function StatsBar({ suites, coverage }: { suites: TestRun[]; coverage: QaCoverage | null }) {
+  const role = useAuthStore(s => s.role)
   if (!suites.length) return null
 
-  const totalPassed = suites.reduce((s, r) => s + (r.totalPassed ?? 0), 0)
-  const totalFailed = suites.reduce((s, r) => s + (r.totalFailed ?? 0), 0)
-  const totalTests  = totalPassed + totalFailed
-  const passRate    = totalTests > 0 ? Math.round((totalPassed / totalTests) * 100) : null
-  const lastRun     = suites[0]?.createdAt ? new Date(suites[0].createdAt) : null
+  const latest = suites[0]
+  const live = suites.filter(r => ['queued', 'claimed', 'running'].includes(r.status))
+  const stuck = live.filter(r => r.createdAt &&
+    Date.now() - new Date(r.createdAt).getTime() > 6 * 3600 * 1000)
 
-  const stats = [
-    { label: 'Total Runs',    value: String(suites.length), color: 'var(--color-primary)' },
-    { label: 'Pass Rate',     value: passRate !== null ? `${passRate}%` : '—',
-      color: passRate !== null ? (passRate >= 90 ? '#10b981' : passRate >= 70 ? '#f59e0b' : '#ef4444') : 'var(--color-muted)' },
-    { label: 'Last Run',
-      value: lastRun ? lastRun.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—',
-      color: 'var(--color-text)' },
-    // Replaces an "Artifacts" cell that summed `run.artifacts?.length` — undefined
-    // for every run stored in S3, so it read 0 always and was worse than nothing.
-    { label: 'Coverage',
-      value: coverage?.nodePct !== null && coverage?.nodePct !== undefined
-        ? `${coverage.nodePct}%` : '—',
-      color: pctColor(coverage?.nodePct ?? null) },
-  ]
+  const planned = latest?.totalCases ?? coverage?.planned ?? 0
+  const ran = (latest?.totalPassed ?? 0) + (latest?.totalFailed ?? 0)
+  const untestableN = (latest?.totalUnemulated ?? 0) + (latest?.totalSkipped ?? 0)
+  const untestable = planned ? Math.round((untestableN / planned) * 100) : null
+  const executed = planned ? Math.round((ran / planned) * 100) : null
+  const nodePct = coverage?.nodePct ?? null
+
+  const lastResult = latest?.status === 'failed' ? 'failed'
+    : latest?.status === 'unavailable' ? 'unavailable'
+    : latest?.status === 'cancelled' ? 'cancelled'
+    : latest ? `${latest.totalPassed ?? 0} of ${planned} passed` : null
+
+  let items: MetricProps[]
+  if (role === 'user_ops') {
+    items = [
+      { label: 'Runs', value: suites.length, basis: 'recorded' },
+      { label: 'Live now', value: live.length,
+        state: live.length ? 'attention' : 'ok', basis: 'queued or running' },
+      { label: 'Stuck', value: stuck.length,
+        state: stuck.length ? 'critical' : 'ok', basis: 'running over 6h' },
+      { label: 'Coverage', value: nodePct, unit: '%', state: pctState(nodePct),
+        basis: nodePct === null ? 'no run has completed' : 'of graph nodes' },
+    ]
+  } else if (role === 'user_dev' || role === 'ontology_maintainer') {
+    items = [
+      { label: 'Tested', value: coverage ? 'yes' : 'no',
+        state: coverage ? 'ok' : 'attention',
+        basis: coverage ? 'this project has coverage' : 'no run has verified it' },
+      { label: 'Last result', value: lastResult,
+        state: latest?.status === 'failed' ? 'critical'
+             : latest?.status === 'unavailable' ? 'attention' : 'ok',
+        basis: latest?.createdAt
+          ? new Date(latest.createdAt).toLocaleDateString(undefined,
+              { month: 'short', day: 'numeric' }) : '' },
+      { label: 'Coverage', value: nodePct, unit: '%', state: pctState(nodePct),
+        basis: nodePct === null ? 'no run has completed' : 'of graph nodes' },
+    ]
+  } else {
+    // QA and admin: the run-quality view.
+    items = [
+      { label: 'Coverage', value: nodePct, unit: '%', state: pctState(nodePct),
+        basis: nodePct !== null
+          ? `${coverage?.nodeCovered ?? 0} of ${coverage?.nodeTotal ?? 0} verified`
+          : 'no run has completed' },
+      // The number that separates "everything passed" from "nothing ran".
+      { label: 'Untestable', value: untestable, unit: '%',
+        state: inversePctState(untestable),
+        basis: untestable !== null
+          ? `${untestableN} of ${planned} never ran` : 'no run has completed' },
+      { label: 'Plan executed', value: executed, unit: '%',
+        state: executed === null ? 'unmeasured' : 'ok',
+        basis: planned ? `${ran} of ${planned} cases` : 'no run has completed' },
+      { label: 'Runs', value: suites.length,
+        basis: live.length ? `${live.length} live` : 'recorded' },
+    ]
+  }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10,
-      padding: '14px 20px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
-      {stats.map(s => (
-        <div key={s.label} style={{ textAlign: 'center' }}>
-          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: 20, color: s.color }}>
-            {s.value}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--color-muted)' }}>{s.label}</div>
-        </div>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`,
+      gap: 'var(--space-4)',
+      padding: 'var(--space-3) var(--space-6)',
+      borderBottom: '1px solid var(--color-border)', flexShrink: 0,
+    }}>
+      {items.map((item, i) => (
+        <Metric key={item.label} {...item} size="compact"
+                surface={false} delay={i * 0.05} />
       ))}
     </div>
   )

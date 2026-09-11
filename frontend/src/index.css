@@ -6,7 +6,41 @@
   --font-heading: 'Montserrat', system-ui, sans-serif;
   --font-body:    'Inter', system-ui, sans-serif;
   --font-mono:    'JetBrains Mono', monospace;
+
+  /* ── Type scale ───────────────────────────────────────────────────────────
+     Sizes were previously chosen inline per component — 28/26/24/22/20/16/
+     13.5/12/11/10/9.5 all appear, with no relationship between them. These six
+     steps are the whole vocabulary; a size not on this list is a bug.         */
+  --text-hero:    40px;   /* the one number that owns a screen */
+  --text-metric:  28px;   /* standing metrics */
+  --text-title:   15px;   /* block titles */
+  --text-body:  13.5px;
+  --text-caption: 11.5px;
+  --text-label:  10.5px;  /* uppercase, 0.11em tracking */
+
+  /* ── Space — 4pt grid ─────────────────────────────────────────────────── */
+  --space-1:  4px;  --space-2:  8px;  --space-3: 12px;
+  --space-4: 16px;  --space-6: 24px;  --space-8: 32px;  --space-12: 48px;
+
+  /* ── Radius ───────────────────────────────────────────────────────────────
+     Retires the 10/12/14/16 disagreement — the old dashboard used all four on
+     a single page. Panels are --radius-md.                                    */
+  --radius-sm:  6px;  --radius-md: 10px;  --radius-lg: 14px;
+
+  /* Content column. Previously unbounded, so on a wide monitor a row of tiles
+     stretched until they read as unrelated objects rather than one row. */
+  --content-max: 1280px;
 }
+
+/* ══ SECTION ACCENTS ═════════════════════════════════════════════════════════
+   Identity, not state. Each dashboard section takes one of these so the page
+   reads as a set of distinct areas rather than one grey wall — while the NUMBER
+   inside every tile still takes its colour from `state` and nothing else.
+
+   COOL HUES ONLY, and that is the whole rule. Amber and red belong to warning
+   and danger. If a section could be accented amber, a tile in it would show a
+   warning-amber number on a warning-amber ground and the signal would be gone.
+   Cool identity, warm state: the two channels can never be confused.        */
 
 /* ══ THEME: Dark1 — Aura Navy (DEFAULT) ═════════════════════════════════ */
 :root, [data-theme="dark1"] {
@@ -20,8 +54,8 @@
   --color-primary-hi:#93c5fd;
   --color-accent:    #a78bfa;
   --color-text:      #f1f5ff;
-  --color-subtext:   #94a3b8;
-  --color-muted:     #475569;
+  --color-subtext:   #97a7c2;
+  --color-muted:     #4a5a75;
   --color-success:   #34d399;
   --color-warning:   #fbbf24;
   --color-danger:    #f87171;
@@ -31,6 +65,16 @@
   --glow-primary: 0 0 24px rgba(96,165,250,0.5);
   --shadow-md:  0 4px 20px rgba(0,0,0,0.4);
   --shadow-lg:  0 8px 40px rgba(0,0,0,0.6);
+}
+
+/* Dark1 — extends the navy world the theme already lives in. */
+:root, [data-theme="dark1"] {
+  --accent-1: #60a5fa;   /* azure   */
+  --accent-2: #a78bfa;   /* violet  */
+  --accent-3: #2dd4bf;   /* teal    */
+  --accent-4: #818cf8;   /* indigo  */
+  --accent-5: #38bdf8;   /* sky     */
+  --accent-6: #e879f9;   /* fuchsia */
 }
 
 /* ══ THEME: Dark2 — Senzing Dark ════════════════════════════════════════ */
@@ -58,6 +102,17 @@
   --shadow-lg:  0 8px 40px rgba(0,0,0,0.7);
 }
 
+/* Dark2 — the ground is near-black and the brand is orange, so the cool set is
+   lifted for contrast and reads as deliberate counterpoint to the primary. */
+[data-theme="dark2"] {
+  --accent-1: #7dd3fc;
+  --accent-2: #c4b5fd;
+  --accent-3: #5eead4;
+  --accent-4: #a5b4fc;
+  --accent-5: #67e8f9;
+  --accent-6: #f0abfc;
+}
+
 /* ══ THEME: Light ════════════════════════════════════════════════════════ */
 [data-theme="light"] {
   --color-bg:        #f0f4ff;
@@ -70,8 +125,8 @@
   --color-primary-hi:#1d4ed8;
   --color-accent:    #7c3aed;
   --color-text:      #0f172a;
-  --color-subtext:   #334155;
-  --color-muted:     #64748b;
+  --color-subtext:   #354761;
+  --color-muted:     #667896;
   --color-success:   #059669;
   --color-warning:   #d97706;
   --color-danger:    #dc2626;
@@ -82,6 +137,23 @@
   --shadow-md:  0 4px 12px rgba(0,0,0,0.08);
   --shadow-lg:  0 8px 30px rgba(0,0,0,0.12);
 }
+
+/* Light — same hues, darkened until they hold contrast on a white card. */
+[data-theme="light"] {
+  --accent-1: #2563eb;
+  --accent-2: #7c3aed;
+  --accent-3: #0d9488;
+  --accent-4: #4f46e5;
+  --accent-5: #0284c7;
+  --accent-6: #c026d3;
+}
+
+/* ══ ALIAS ══════════════════════════════════════════════════════════════
+   Not a new colour. `--color-text-secondary` is referenced in 74 places
+   (all of components/qa/*, ConfirmDeleteDialog, progress.ts) and was never
+   defined anywhere — every one of those texts silently inherited its
+   parent's colour. Resolved per-theme, because --color-subtext is.        */
+:root { --color-text-secondary: var(--color-subtext); }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
@@ -134,7 +206,7 @@ code,pre,.mono { font-family: var(--font-mono); }
   color: var(--color-text); font-family: var(--font-body); font-size: 14px;
   outline: none; transition: border-color 0.2s, box-shadow 0.2s;
 }
-.ov-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(232,76,14,0.12); }
+.ov-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent); }
 .ov-input::placeholder { color: var(--color-muted); }
 
 .ov-btn {
@@ -147,7 +219,7 @@ code,pre,.mono { font-family: var(--font-mono); }
 }
 .ov-btn-primary {
   background: var(--color-primary); color: #fff;
-  box-shadow: 0 2px 12px rgba(232,76,14,0.25);
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
 .ov-btn-primary:hover:not(:disabled) {
   background: var(--color-primary-hi);
@@ -173,7 +245,7 @@ code,pre,.mono { font-family: var(--font-mono); }
 }
 .nav-link:hover { color: var(--color-text); background: rgba(255,255,255,0.04); }
 .nav-link.active {
-  color: var(--color-primary); background: rgba(232,76,14,0.08);
+  color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 8%, transparent);
   border-left-color: var(--color-primary); font-weight: 600;
 }
 [data-theme="dark1"] .nav-link.active { background: rgba(79,142,247,0.1); }
@@ -191,7 +263,7 @@ code,pre,.mono { font-family: var(--font-mono); }
 .badge-danger  { background: rgba(239,68,68,0.12);  color: #ef4444; border: 1px solid rgba(239,68,68,0.25); }
 .badge-info    { background: rgba(59,130,246,0.12); color: #3b82f6; border: 1px solid rgba(59,130,246,0.25); }
 .badge-default { background: rgba(255,255,255,0.06); color: var(--color-subtext); border: 1px solid var(--color-border); }
-.badge-primary { background: rgba(232,76,14,0.12); color: var(--color-primary); border: 1px solid rgba(232,76,14,0.25); }
+.badge-primary { background: color-mix(in srgb, var(--color-primary) 12%, transparent); color: var(--color-primary); border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent); }
 
 .ov-divider { height: 1px; background: var(--color-border); margin: 16px 0; }
 
@@ -305,4 +377,22 @@ code,pre,.mono { font-family: var(--font-mono); }
     radial-gradient(circle, rgba(255,255,255,0.15) 1px, transparent 1px);
   background-size: 100% 100%, 100% 100%, 350px 350px, 180px 180px, 90px 90px;
   animation: cosmos-drift 120s linear infinite;
+}
+
+/* ══ DASHBOARD ══════════════════════════════════════════════════════════════
+   The hero band puts the headline and the attention rail side by side, which
+   only works while both have room. Below this the rail drops under the
+   headline rather than being squeezed to a column of wrapped fragments.      */
+@media (max-width: 900px) {
+  .dash-hero { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+/* Honour the OS setting everywhere, including animations declared in CSS that
+   a component's `useReducedMotion` cannot reach. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

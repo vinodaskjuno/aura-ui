@@ -626,7 +626,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
               display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', flexShrink: 0,
             }}
           >
-            {isLoadingGraph && <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />}
+            {isLoadingGraph && <Loader2 size={13} className="animate-spin" />}
             Load Graph
           </button>
         </div>
@@ -774,7 +774,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
         }}>
           {loadingSessions ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 16, color: 'var(--color-muted)', fontSize: 12 }}>
-              <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Loading sessions…
+              <Loader2 size={13} className="animate-spin" /> Loading sessions…
             </div>
           ) : sessions.length === 0 ? (
             <div style={{ padding: 16, textAlign: 'center', color: 'var(--color-muted)', fontSize: 12 }}>
@@ -880,7 +880,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                 {isSearchingName && (
                   <Loader2 size={13} style={{
                     position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                    color: 'var(--color-muted)', animation: 'spin 1s linear infinite',
+                    color: 'var(--color-muted)'
                   }} />
                 )}
               </div>
@@ -1010,7 +1010,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                     display: 'flex', alignItems: 'center', gap: 6,
                   }}
                 >
-                  {submitting && <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />}
+                  {submitting && <Loader2 size={13} className="animate-spin" />}
                   {submitting ? 'Starting…' : 'Start →'}
                 </button>
                 </>

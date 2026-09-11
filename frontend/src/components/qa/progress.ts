@@ -5,6 +5,8 @@
  * that showed 0% for a run whose plan size was not yet known, and one that could pass
  * 100% when a heartbeat raced the final report.
  */
+
+import { pctState, stateColor } from '../ui/metricState'
 import type { QaActiveRun, QaCoverage, RunCase, RunReport, RunStep } from '../../api/qa'
 
 export type Progress =
@@ -126,12 +128,13 @@ export function executionRate(report: RunReport, steps: RunStep[]):
   return { planned, executed, pct: planned ? Math.round((executed / planned) * 100) : null }
 }
 
-/** Colour for a percentage, matching the pass-rate thresholds used elsewhere. */
+/**
+ * Colour for a percentage. Delegates to `pctState` so this and the dashboard
+ * cannot disagree about what counts as healthy — they used to, at 80/50 here
+ * and 90/70 in the QA stats bar.
+ */
 export function pctColor(pct: number | null): string {
-  if (pct === null) return 'var(--color-text-secondary)'
-  if (pct >= 80) return '#10b981'
-  if (pct >= 50) return '#f59e0b'
-  return '#ef4444'
+  return stateColor(pctState(pct)) ?? 'var(--color-text)'
 }
 
 export function hasCoverage(c: QaCoverage | null | undefined): c is QaCoverage {

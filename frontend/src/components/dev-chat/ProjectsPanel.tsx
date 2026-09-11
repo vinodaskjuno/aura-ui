@@ -20,22 +20,30 @@ interface ProjectsPanelProps {
   onDeleted?: (projectId: string) => void
 }
 
-const STATUS_CONFIG: Record<string, { color: string; label: string; pulse?: boolean }> = {
-  pending:           { color: 'var(--color-warning)',  label: 'Pending' },
-  analyzing:         { color: '#3b82f6',               label: 'Analyzing', pulse: true },
-  analyzed:          { color: 'var(--color-success)',  label: 'Analyzed' },
-  CODE_CHANGES_DONE: { color: 'var(--color-accent)',   label: 'Done' },
+/**
+ * Status to a shipped badge variant.
+ *
+ * This used to carry a colour per status and build the badge from
+ * `` `${cfg.color}22` ``. Once those colours became design tokens that produced
+ * the literal string `var(--color-warning)22`, which is not a colour — so
+ * `pending`, `analyzed` and `Done` rendered with no background and no border,
+ * and only `analyzing` (which had kept a raw hex) ever looked right.
+ *
+ * String-concatenated alpha and CSS custom properties cannot coexist. The badge
+ * skins in index.css already solve this, per variant, in every theme.
+ */
+const STATUS_BADGE: Record<string, { variant: string; label: string }> = {
+  pending:           { variant: 'warning', label: 'Pending' },
+  analyzing:         { variant: 'info',    label: 'Analyzing' },
+  analyzed:          { variant: 'success', label: 'Analyzed' },
+  CODE_CHANGES_DONE: { variant: 'primary', label: 'Done' },
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] ?? { color: 'var(--color-muted)', label: status }
+  const cfg = STATUS_BADGE[status] ?? { variant: 'default', label: status }
   return (
-    <span style={{
-      fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
-      background: `${cfg.color}22`, color: cfg.color, border: `1px solid ${cfg.color}44`,
-      textTransform: 'uppercase', letterSpacing: '0.5px',
-      animation: cfg.pulse ? 'panel-pulse 1.8s ease-in-out infinite' : 'none',
-    }}>
+    <span className={`ov-badge badge-${cfg.variant}`}
+          style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
       {cfg.label}
     </span>
   )
@@ -164,7 +172,7 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
           {loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, color: 'var(--color-muted)', fontSize: 12 }}>
-              <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Loading...
+              <Loader2 size={14} className="animate-spin" /> Loading...
             </div>
           ) : filtered.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--color-muted)', fontSize: 12 }}>
@@ -185,7 +193,9 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
                 style={{
                   width: '100%', display: 'flex', alignItems: 'flex-start', gap: 8,
                   padding: '9px 10px', borderRadius: 8, marginBottom: 3,
-                  background: p.projectId === selectedId ? 'var(--color-primary)15' : 'none',
+                  background: p.projectId === selectedId
+                    ? 'color-mix(in srgb, var(--color-primary) 12%, transparent)'
+                    : 'none',
                   border: `1px solid ${p.projectId === selectedId ? 'var(--color-primary)' : 'transparent'}`,
                   cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
                 }}
@@ -262,9 +272,7 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
       </div>
 
       <style>{`
-        @keyframes panel-pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
         .proj-row:hover .proj-del { opacity: 1 !important; }
-        @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
       `}</style>
     </>
   )

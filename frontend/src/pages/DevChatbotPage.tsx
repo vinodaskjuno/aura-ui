@@ -3,13 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { applyChange, cloneRepo, discardChange } from '../api/gitOps'
 import { listMcpServers } from '../api/mcp'
 import {
-  Bot, X, Loader2, Send, RefreshCw, BarChart3, Shield, Server,
-  Users, Layers, Clock, Trash2, MessageSquare, GitBranch, Plus, ChevronRight,
-  ExternalLink, TrendingUp, DollarSign, Pencil, ArrowLeft,
-  PanelLeftOpen, PanelLeftClose, SquarePen, User, Wrench, Check,
+  Bot, Loader2, Send, RefreshCw, MessageSquare, GitBranch, Pencil, ArrowLeft, PanelLeftOpen, PanelLeftClose, SquarePen, User, Wrench, Check,
 } from 'lucide-react'
-import { searchNodes, getOntologyStats, type OntologyStats } from '../api/ontologyUniverse'
-import { getChatSessions, createChatSession, deleteChatSession, getChatStats, type ChatSession } from '../api/chatSessions'
+import { getChatSessions, createChatSession, type ChatSession } from '../api/chatSessions'
 import { useOntologyStore } from '../store/ontologyStore'
 import ProjectGraphModal from '../components/dev/ProjectGraphModal'
 import ModelSelector, { getModelById, type ModelOption } from '../components/dev-chat/ModelSelector'
@@ -18,8 +14,16 @@ import TokenMetricsBadge from '../components/dev-chat/TokenMetricsBadge'
 import ProjectsPanel, { type WizardResult } from '../components/dev-chat/ProjectsPanel'
 import CreateProjectWizard, { type WizardInitialValues } from '../components/dev-chat/CreateProjectWizard'
 import MetricsDashboard from '../components/dev-chat/MetricsDashboard'
-import { getTokenMetrics } from '../api/metrics'
 import { type Project, projectsApi } from '../api/projects'
+import { ChevronDown } from 'lucide-react'
+import { getDevmateView, type DevmateView } from '../api/devmateView'
+import ProjectHeroGrid from '../components/dev-chat/ProjectHeroGrid'
+import ConfirmDeleteDialog from '../components/ui/ConfirmDeleteDialog'
+import type { HeroCard } from '../api/devmateView'
+import { Headline } from '../components/ui/Headline'
+import { AttentionRail } from '../components/dashboard/AttentionRail'
+import { renderBlock } from '../components/dashboard/renderBlock'
+import { sectionAccent } from '../components/dashboard/sectionAccent'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SearchResult {
@@ -57,48 +61,6 @@ interface ChatMsg {
 
 type Phase = 'select' | 'chat'
 
-// ── Metric card ───────────────────────────────────────────────────────────────
-interface MetricDef { label: string; key: string; color: string; icon: React.ReactNode }
-const METRIC_DEFS: MetricDef[] = [
-  { label: 'Projects',      key: 'project',         color: '#f59e0b', icon: <GitBranch size={16}/> },
-  { label: 'Services',      key: 'service',         color: '#10b981', icon: <Layers size={16}/> },
-  { label: 'Infrastructure',key: 'infrastructure',  color: '#06b6d4', icon: <Server size={16}/> },
-  { label: 'Security',      key: 'securityfinding', color: '#ef4444', icon: <Shield size={16}/> },
-  { label: 'Teams',         key: 'team',            color: '#ec4899', icon: <Users size={16}/> },
-  { label: 'Databases',     key: 'database',        color: '#8b5cf6', icon: <BarChart3 size={16}/> },
-]
-
-function MetricCard({ def, value, loading }: { def: MetricDef; value: number; loading: boolean }) {
-  return (
-    <div style={{
-      background: 'var(--color-surface)',
-      border: `1px solid ${def.color}33`,
-      borderRadius: '12px', padding: '16px',
-      display: 'flex', flexDirection: 'column', gap: '8px',
-      position: 'relative', overflow: 'hidden',
-      transition: 'border-color 0.2s, transform 0.15s',
-    }}
-      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = def.color + '88'; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = def.color + '33'; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)' }}
-    >
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: `linear-gradient(90deg, ${def.color}, ${def.color}00)` }} />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ color: def.color, opacity: 0.9 }}>{def.icon}</span>
-        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: def.color, boxShadow: `0 0 8px ${def.color}` }} />
-      </div>
-      <div>
-        {loading ? (
-          <div style={{ width: '32px', height: '24px', background: 'var(--color-border)', borderRadius: '4px', animation: 'pulse 1.5s ease-in-out infinite' }} />
-        ) : (
-          <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--color-text)', lineHeight: 1 }}>{value}</div>
-        )}
-        <div style={{ fontSize: '11px', color: 'var(--color-muted)', marginTop: '4px', fontWeight: 500 }}>{def.label}</div>
-      </div>
-    </div>
-  )
-}
-
-// ── Session list item ─────────────────────────────────────────────────────────
 function timeAgo(iso: string): string {
   const d = Date.now() - new Date(iso).getTime()
   if (d < 60_000) return 'just now'
@@ -107,204 +69,6 @@ function timeAgo(iso: string): string {
   return `${Math.floor(d / 86_400_000)}d ago`
 }
 
-// ── Source badge colors ───────────────────────────────────────────────────────
-const SOURCE_COLORS: Record<string, string> = {
-  git:             '#10b981',
-  servicenow:      '#06b6d4',
-  servicenow_cmdb: '#06b6d4',
-  wiz:             '#ef4444',
-  mock:            '#a78bfa',
-  seed:            '#6366f1',
-}
-
-function SourceBadge({ source }: { source?: string }) {
-  const s = (source ?? 'unknown').toLowerCase()
-  const color = SOURCE_COLORS[s] ?? '#6b7280'
-  return (
-    <span style={{
-      fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
-      background: color + '22', color, border: `1px solid ${color}44`,
-      textTransform: 'uppercase', letterSpacing: '0.5px',
-    }}>{s}</span>
-  )
-}
-
-// ── Project search dropdown ───────────────────────────────────────────────────
-interface DropdownProps {
-  query: string
-  results: SearchResult[]
-  isSearching: boolean
-  onSelect: (r: SearchResult) => void
-  onCreateNew: () => void
-}
-
-function OntologyDropdown({ query, results, isSearching, onSelect, onCreateNew }: DropdownProps) {
-  if (query.length < 2) return null
-
-  return (
-    <div style={{
-      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
-      marginTop: '4px', borderRadius: '12px', overflow: 'hidden',
-      background: 'var(--color-surface)',
-      border: '1px solid var(--color-border)',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-    }}>
-      {isSearching ? (
-        <div style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-subtext)', fontSize: '13px' }}>
-          <Loader2 size={14} className="animate-spin" /> Searching ontology…
-        </div>
-      ) : results.length > 0 ? (
-        <>
-          <div style={{ padding: '8px 12px 4px', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--color-muted)' }}>
-            Found in Ontology Graph
-          </div>
-          {results.map(r => (
-            <button
-              key={r.id}
-              onClick={() => onSelect(r)}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer',
-                textAlign: 'left', transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-hover)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-            >
-              <div style={{
-                width: '28px', height: '28px', borderRadius: '6px', flexShrink: 0,
-                background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '11px', fontWeight: 800, color: '#fff',
-              }}>
-                {r.name.slice(0, 1).toUpperCase()}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {r.name}
-                </div>
-                {r.externalId && (
-                  <div style={{ fontSize: '10px', color: 'var(--color-muted)', marginTop: '1px' }}>{r.externalId}</div>
-                )}
-              </div>
-              <SourceBadge source={r.source} />
-              <ChevronRight size={12} style={{ color: 'var(--color-muted)', flexShrink: 0 }} />
-            </button>
-          ))}
-          <div style={{ height: '1px', background: 'var(--color-border)', margin: '0 12px' }} />
-        </>
-      ) : (
-        <div style={{ padding: '12px', fontSize: '12px', color: 'var(--color-muted)' }}>
-          No ontology found for "{query}"
-        </div>
-      )}
-
-      {/* Create new option */}
-      <button
-        onClick={onCreateNew}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
-          padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer',
-          textAlign: 'left', transition: 'background 0.15s',
-        }}
-        onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-hover)')}
-        onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-      >
-        <div style={{
-          width: '28px', height: '28px', borderRadius: '6px', flexShrink: 0,
-          background: 'rgba(99,102,241,0.15)', border: '1px dashed #6366f1',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Plus size={14} style={{ color: '#6366f1' }} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#6366f1' }}>
-            Create "{query}" as new project
-          </div>
-          <div style={{ fontSize: '10px', color: 'var(--color-muted)', marginTop: '1px' }}>Start fresh without ontology</div>
-        </div>
-      </button>
-    </div>
-  )
-}
-
-// ── Ontology context banner ───────────────────────────────────────────────────
-interface BannerProps {
-  projectName: string
-  nodeCount: number
-  linkCount: number
-  onViewGraph: () => void
-  onUseContext: () => void
-  onSkip: () => void
-}
-
-function OntologyContextBanner({ projectName, nodeCount, linkCount, onViewGraph, onUseContext, onSkip }: BannerProps) {
-  return (
-    <div style={{
-      borderRadius: '12px', padding: '16px 20px', marginBottom: '20px',
-      background: 'linear-gradient(135deg, rgba(96,165,250,0.08), rgba(167,139,250,0.08))',
-      border: '1px solid rgba(96,165,250,0.25)',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-        <div style={{
-          width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
-          background: 'linear-gradient(135deg, #312e81, #4f46e5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 0 12px rgba(96,165,250,0.3)',
-          fontSize: '16px',
-        }}>✦</div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-text)', marginBottom: '4px' }}>
-            Ontology found for "{projectName}"
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--color-subtext)', marginBottom: '14px' }}>
-            This project has <strong style={{ color: '#60a5fa' }}>{nodeCount} nodes</strong> and{' '}
-            <strong style={{ color: '#34d399' }}>{linkCount} links</strong> in the knowledge graph.
-            Load it as context to get ontology-aware answers.
-          </div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button
-              onClick={onViewGraph}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '5px',
-                padding: '7px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)',
-                color: '#60a5fa', cursor: 'pointer',
-              }}
-            >
-              <ExternalLink size={12} /> View Graph
-            </button>
-            <button
-              onClick={onUseContext}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '5px',
-                padding: '7px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700,
-                background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', border: 'none',
-                color: '#fff', cursor: 'pointer',
-              }}
-            >
-              ✦ Use as Context
-            </button>
-            <button
-              onClick={onSkip}
-              style={{
-                padding: '7px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                background: 'none', border: '1px solid var(--color-border)',
-                color: 'var(--color-subtext)', cursor: 'pointer',
-              }}
-            >
-              Skip
-            </button>
-          </div>
-        </div>
-        <button onClick={onSkip} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted)', padding: '2px' }}>
-          <X size={14} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ── Markdown renderer ─────────────────────────────────────────────────────────
 function renderInline(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = []
   const re = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|`(.+?)`|\*(.+?)\*)/g
@@ -557,29 +321,36 @@ export default function DevChatbotPage() {
 
   // Project selection state
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<SearchResult[]>([])
-  const [isSearching, setIsSearching] = useState(false)
-  const [dropdownOpen, setDropdownOpen] = useState(false)
   const [selectedProject, setSelectedProject] = useState<SearchResult | null>(null)
 
   // Wizard
   const [showWizard, setShowWizard] = useState(false)
+  const [showBanner, setShowBanner] = useState(false)
+  const [isLoadingSubgraph, setIsLoadingSubgraph] = useState(false)
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
+
+  // The whole landing screen, decided server-side. Replaces four independently
+  // fetched metric strips whose `.catch(() => 0)` fallbacks made a failure
+  // indistinguishable from a real zero.
+  const [devmate, setDevmate] = useState<DevmateView | null>(null)
+  const [devmateLoading, setDevmateLoading] = useState(true)
+  const [devmateRefreshing, setDevmateRefreshing] = useState(false)
+  const [showUsage, setShowUsage] = useState(false)
+  // The card awaiting confirmation. The dialog itself does the preview and
+  // the typed-name check — it is the same one ProjectsPanel uses, so a
+  // delete from the hero and a delete from the list cannot diverge.
+  const [doomed, setDoomed] = useState<HeroCard | null>(null)
   const [showEditWizard, setShowEditWizard] = useState(false)
   const [editInitialValues, setEditInitialValues] = useState<WizardInitialValues | undefined>(undefined)
   const [loadingEditData, setLoadingEditData] = useState(false)
 
   // History side panel (left, ChatGPT-style)
-  const [showHistoryPanel, setShowHistoryPanel] = useState(false)
-  const [historyPanelSessions, setHistoryPanelSessions] = useState<ChatSession[]>([])
-  const [loadingHistoryPanel, setLoadingHistoryPanel] = useState(false)
   const [showHistorySidebar, setShowHistorySidebar] = useState(true)
   const [sidebarSessions, setSidebarSessions] = useState<ChatSession[]>([])
   const [loadingSidebar, setLoadingSidebar] = useState(false)
 
   // Ontology context state
-  const [showBanner, setShowBanner] = useState(false)
   const [contextLoaded, setContextLoaded] = useState(false)
-  const [isLoadingSubgraph, setIsLoadingSubgraph] = useState(false)
   const [showGraphModal, setShowGraphModal] = useState(false)
 
   // Chat state
@@ -601,19 +372,11 @@ export default function DevChatbotPage() {
   const [switchGenerating, setSwitchGenerating] = useState(false)
 
   // Token metrics
-  const [tokenMetrics, setTokenMetrics] = useState<{ totalInputTokens: number; totalOutputTokens: number; totalCost: number; totalSessions: number } | null>(null)
-  const [loadingMetrics, setLoadingMetrics] = useState(false)
 
   // Tier / budget notifications
   const [tierSwitchBanner, setTierSwitchBanner] = useState<{ fromTier: number; toTier: number; reason: string; newModel: string } | null>(null)
   const [budgetWarning, setBudgetWarning] = useState<{ tier: number; spentUSD: number; limitUSD: number; pct: number } | null>(null)
 
-  // Metrics + session history
-  const [stats, setStats] = useState<OntologyStats | null>(null)
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
-  const [chatStatsData, setChatStatsData] = useState({ totalSessions: 0, todaySessions: 0, totalMessages: 0 })
-  const [loadingStats, setLoadingStats] = useState(true)
-  const [deletingSession, setDeletingSession] = useState<string | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -626,34 +389,28 @@ export default function DevChatbotPage() {
   // Suppress unused navigate warning — keep for future route navigation
   void navigate
 
-  // ── Load dashboard data on mount ───────────────────────────────────────────
-  useEffect(() => {
-    setLoadingStats(true)
-    Promise.all([
-      getOntologyStats().catch(() => null),
-      getChatSessions().catch(() => []),
-      getChatStats().catch(() => ({ totalSessions: 0, todaySessions: 0, totalMessages: 0 })),
-    ]).then(([s, sessions, cs]) => {
-      if (s) setStats(s)
-      setChatSessions(sessions)
-      setChatStatsData(cs)
-    }).finally(() => setLoadingStats(false))
+  // ── The landing payload ────────────────────────────────────────────────────
+  const loadDevmate = useCallback(async (isRefresh = false) => {
+    isRefresh ? setDevmateRefreshing(true) : setDevmateLoading(true)
+    try {
+      setDevmate(await getDevmateView())
+    } catch {
+      // Leave whatever is on screen. A failed refresh should not blank a
+      // workspace the developer is mid-way through using.
+    } finally {
+      setDevmateLoading(false); setDevmateRefreshing(false)
+    }
   }, [])
 
-  // ── Load token metrics ────────────────────────────────────────────────────
-  useEffect(() => {
-    setLoadingMetrics(true)
-    getTokenMetrics('today')
-      .then(m => setTokenMetrics(m))
-      .catch(() => {})
-      .finally(() => setLoadingMetrics(false))
-  }, [])
+  useEffect(() => { loadDevmate() }, [loadDevmate])
 
   const refreshSessions = useCallback(async () => {
-    const [sessions, cs] = await Promise.all([getChatSessions(), getChatStats()])
+    // `getChatStats` went with the strip that displayed it — the session
+    // counts now come from /api/devmate/view, which also knows how to say
+    // "unmeasured" rather than zero when nothing has been recorded.
+    const sessions = await getChatSessions()
     setChatSessions(sessions)
     setSidebarSessions(sessions)
-    setChatStatsData(cs)
   }, [])
 
   // Load sidebar sessions when entering chat phase
@@ -685,58 +442,6 @@ export default function DevChatbotPage() {
     setPhase('chat')
   }, [])
 
-  const handleDeleteSession = useCallback(async (e: React.MouseEvent, sessionId_: string) => {
-    e.stopPropagation()
-    setDeletingSession(sessionId_)
-    try {
-      await deleteChatSession(sessionId_)
-      setChatSessions(prev => prev.filter(s => s.sessionId !== sessionId_))
-    } finally {
-      setDeletingSession(null)
-    }
-  }, [])
-
-  // ── Debounced search ────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (query.length < 2) { setResults([]); setDropdownOpen(false); return }
-    setIsSearching(true)
-    setDropdownOpen(true)
-    const t = setTimeout(async () => {
-      try {
-        const r = await searchNodes(query, 'Project', 10) as SearchResult[]
-        setResults(r)
-      } catch {
-        setResults([])
-      } finally {
-        setIsSearching(false)
-      }
-    }, 300)
-    return () => clearTimeout(t)
-  }, [query])
-
-  // Click outside to close dropdown
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  // Auto-scroll messages
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  useEffect(() => {
-    listMcpServers()
-      .then(d => setMcpServers(
-        d.servers.filter(s => s.status === 'connected')
-          .map(s => ({ name: s.name, tools: s.tools.length }))))
-      .catch(() => setMcpServers([]))     // never block chat on this
-  }, [])
 
   // ── WebSocket (connects when entering chat phase) ───────────────────────────
   useEffect(() => {
@@ -831,18 +536,6 @@ export default function DevChatbotPage() {
   }, [phase, selectedModel])
 
   // ── Project selection handlers ──────────────────────────────────────────────
-  const handleSelectProject = useCallback(async (r: SearchResult) => {
-    setSelectedProject(r)
-    setDropdownOpen(false)
-    setQuery(r.name)
-    setShowBanner(true)
-    setIsLoadingSubgraph(true)
-    try {
-      await loadProjectSubgraph(r.name)
-    } finally {
-      setIsLoadingSubgraph(false)
-    }
-  }, [loadProjectSubgraph])
 
   const startSession = useCallback((name: string, projectId?: string) => {
     const sid = `devchat-${Date.now()}`
@@ -871,7 +564,8 @@ export default function DevChatbotPage() {
   }, [selectedProject])
 
   // Handle project selected from ProjectsPanel — load existing history or start new session
-  const handlePanelProjectSelect = useCallback(async (project: Project) => {
+  const handlePanelProjectSelect = useCallback(
+    async (project: Pick<Project, 'projectId' | 'name'>) => {
     const r: SearchResult = { id: project.projectId, type: 'Project', name: project.name }
     setSelectedProject(r)
     setQuery(project.name)
@@ -914,18 +608,6 @@ export default function DevChatbotPage() {
     loadProjectSubgraph(project.name).catch(() => {})
   }, [loadProjectSubgraph, startSession])
 
-  const handleCreateNew = useCallback(() => {
-    const name = query.trim() || 'New Project'
-    startSession(name)
-    setSelectedProject({ id: name, type: 'Project', name })
-    setShowBanner(false)
-    setContextLoaded(false)
-    setMessages([{
-      role: 'assistant',
-      content: `Hi! I'm **DevMate** for **${name}**. This is a new project — no ontology context yet. Ask me anything about design, architecture, code, or best practices!`,
-    }])
-    setPhase('chat')
-  }, [query, startSession])
 
   /**
    * Clone (or fast-forward) the project's repo into the server workspace.
@@ -975,17 +657,6 @@ export default function DevChatbotPage() {
     setPhase('chat')
   }, [selectedProject, ontologyNodes, ontologyLinks, startSession])
 
-  const handleSkipContext = useCallback(() => {
-    const name = selectedProject?.name ?? ''
-    startSession(name, selectedProject?.id)
-    setShowBanner(false)
-    setContextLoaded(false)
-    setMessages([{
-      role: 'assistant',
-      content: `Hi! I'm **DevMate** for **${name}**. Ask me anything — you can load the ontology context later by clicking "Load Context" in the header.`,
-    }])
-    setPhase('chat')
-  }, [selectedProject, startSession])
 
   const handleWizardComplete = useCallback(async (result: WizardResult) => {
     const { projectName, projectId, useKnowledgeGraph: useKG, sessionChoice, existingSessionId } = result
@@ -1073,22 +744,6 @@ export default function DevChatbotPage() {
     }
   }, [selectedProject])
 
-  const handleShowHistory = useCallback(async () => {
-    setShowHistoryPanel(true)
-    setLoadingHistoryPanel(true)
-    try {
-      const sessions = await getChatSessions()
-      const projectName = selectedProject?.name ?? ''
-      const filtered = projectName
-        ? sessions.filter(s => s.projectName === projectName)
-        : sessions
-      setHistoryPanelSessions(filtered.length > 0 ? filtered : sessions)
-    } catch {
-      setHistoryPanelSessions([])
-    } finally {
-      setLoadingHistoryPanel(false)
-    }
-  }, [selectedProject])
 
   // ── Model switch handlers ──────────────────────────────────────────────────
   function handleModelChange(model: ModelOption) {
@@ -1157,13 +812,27 @@ export default function DevChatbotPage() {
 
   // ── Render: select phase ────────────────────────────────────────────────────
   if (phase === 'select') {
-    const byType = stats?.byType ?? {}
     return (
       <>
       {showWizard && (
         <CreateProjectWizard
           onClose={() => setShowWizard(false)}
           onComplete={result => { setShowWizard(false); handleWizardComplete(result) }}
+        />
+      )}
+      {doomed && (
+        <ConfirmDeleteDialog
+          projectId={doomed.projectId}
+          projectName={doomed.name}
+          onCancel={() => setDoomed(null)}
+          onDeleted={id => {
+            setDoomed(null)
+            // If the deleted project is the one the chat is bound to, clear it:
+            // the next message would otherwise be answered against a project
+            // that no longer exists.
+            if (selectedProject?.id === id) { setSelectedProject(null) }
+            loadDevmate(true)
+          }}
         />
       )}
       {showGraphModal && selectedProject && (
@@ -1181,253 +850,128 @@ export default function DevChatbotPage() {
         display: 'flex', flexDirection: 'column',
       }}>
         {/* ── Header ───────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '28px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{
-              width: '48px', height: '48px', borderRadius: '14px', flexShrink: 0,
-              background: 'linear-gradient(135deg, #312e81, #4f46e5, #7c3aed)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 0 24px rgba(124,58,237,0.4)',
-            }}>
-              <Bot size={22} color="#fff" />
-            </div>
-            <div>
-              <h1 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--color-text)', margin: 0 }}>
-                DevMate
-              </h1>
-              <p style={{ fontSize: '12px', color: 'var(--color-muted)', margin: '2px 0 0' }}>
-                AI-powered assistant with ontology context
-              </p>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button
-              type="button"
-              onClick={() => setShowWizard(true)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '7px',
-                padding: '9px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: 700,
-                background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
-                color: '#fff', border: 'none', cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(124,58,237,0.35)',
-                transition: 'opacity 0.15s, transform 0.15s',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.88'; (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)' }}
-            >
-              <Plus size={15} /> New Project
-            </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#10b981', fontWeight: 600 }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px #10b981' }} />
-              Platform Operational
-            </div>
-          </div>
-        </div>
-
-        {/* ── Token metrics strip ─────────────────────────────────── */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '16px',
+        <header style={{
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+          gap: 'var(--space-4)', marginBottom: 'var(--space-6)',
         }}>
-          {[
-            {
-              label: 'Tokens Today',
-              value: loadingMetrics ? '—' : ((tokenMetrics?.totalInputTokens ?? 0) + (tokenMetrics?.totalOutputTokens ?? 0)).toLocaleString(),
-              color: '#06b6d4',
-              icon: <TrendingUp size={14} />,
-            },
-            {
-              label: 'Cost Today',
-              value: loadingMetrics ? '—' : `$${(tokenMetrics?.totalCost ?? 0).toFixed(4)}`,
-              color: '#f59e0b',
-              icon: <DollarSign size={14} />,
-            },
-            {
-              label: 'Sessions Today',
-              value: loadingMetrics ? '—' : String(tokenMetrics?.totalSessions ?? 0),
-              color: '#10b981',
-              icon: <MessageSquare size={14} />,
-            },
-          ].map((s, i) => (
-            <div key={i} style={{
-              background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-              borderRadius: '10px', padding: '10px 14px',
-              display: 'flex', alignItems: 'center', gap: '10px',
-            }}>
-              <span style={{ color: s.color }}>{s.icon}</span>
-              <div>
-                <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--color-text)', lineHeight: 1 }}>{s.value}</div>
-                <div style={{ fontSize: '10px', color: 'var(--color-muted)', marginTop: '2px' }}>{s.label}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+          <span style={{
+            fontFamily: 'var(--font-heading)',
+            fontSize: 'var(--text-label)', fontWeight: 700,
+            letterSpacing: '0.11em', textTransform: 'uppercase',
+            color: 'var(--color-muted)',
+          }}>
+            DevMate{devmate?.roleLabel ? ` · ${devmate.roleLabel}` : ''}
+          </span>
+          <button
+            type="button"
+            onClick={() => loadDevmate(true)}
+            disabled={devmateRefreshing}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)',
+              background: 'transparent', border: 'none', padding: 0,
+              fontSize: 'var(--text-caption)', color: 'var(--color-subtext)',
+              cursor: devmateRefreshing ? 'default' : 'pointer',
+              fontFamily: 'var(--font-body)',
+            }}
+          >
+            <RefreshCw size={12} className={devmateRefreshing ? 'animate-spin' : undefined} />
+            Refresh
+          </button>
+        </header>
 
-        {/* ── Metrics Grid ──────────────────────────────────────────── */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-          gap: '12px', marginBottom: '24px',
-        }}>
-          {METRIC_DEFS.map(def => (
-            <MetricCard
-              key={def.key}
-              def={def}
-              value={byType[def.key] ?? 0}
-              loading={loadingStats}
+        {/* ── The hero: choosing a project is why this screen exists ── */}
+        {devmateLoading && !devmate ? (
+          <div style={{ display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(232px, 1fr))',
+                        gap: 'var(--space-3)', marginBottom: 'var(--space-8)' }}>
+            {[0, 1, 2, 3].map(i => (
+              <div key={i} className="skeleton" style={{ height: 132 }} />
+            ))}
+          </div>
+        ) : devmate ? (
+          <div style={{ display: 'flex', flexDirection: 'column',
+                        gap: 'var(--space-6)', marginBottom: 'var(--space-8)' }}>
+            <Headline {...devmate.headline} accent={sectionAccent(0)} />
+            <ProjectHeroGrid
+              cards={devmate.hero.cards}
+              total={devmate.hero.total}
+              accent={sectionAccent(0)}
+              onCreateNew={() => setShowWizard(true)}
+              onDelete={setDoomed}
+              onSelect={(projectId, name) => handlePanelProjectSelect({ projectId, name })}
             />
-          ))}
-        </div>
+          </div>
+        ) : null}
 
-        {/* ── Session + Activity stats row ──────────────────────────── */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '28px',
-        }}>
-          {[
-            { label: 'Total Sessions', value: chatStatsData.totalSessions, color: '#a78bfa', icon: <MessageSquare size={14}/> },
-            { label: "Today's Sessions", value: chatStatsData.todaySessions, color: '#f59e0b', icon: <Clock size={14}/> },
-            { label: 'Total Messages', value: chatStatsData.totalMessages, color: '#10b981', icon: <BarChart3 size={14}/> },
-          ].map((s, i) => (
-            <div key={i} style={{
-              background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-              borderRadius: '10px', padding: '12px 16px',
-              display: 'flex', alignItems: 'center', gap: '10px',
-            }}>
-              <span style={{ color: s.color }}>{s.icon}</span>
-              <div>
-                <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--color-text)', lineHeight: 1 }}>{s.value}</div>
-                <div style={{ fontSize: '10px', color: 'var(--color-muted)', marginTop: '2px' }}>{s.label}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+        {devmate && devmate.attention.length > 0 && (
+          <div style={{ marginBottom: 'var(--space-8)' }}>
+            <AttentionRail items={devmate.attention} title="Needs your decision" />
+          </div>
+        )}
 
-        {/* ── Divider ─────────────────────────────────────────────────── */}
-        <div style={{
-          height: '1px',
-          background: 'linear-gradient(90deg, transparent, var(--color-border), transparent)',
-          margin: '32px 0',
-        }} />
-
-        {/* ── Analytics Dashboard ───────────────────────────────────── */}
-        <div style={{ marginBottom: '32px' }}>
-          <MetricsDashboard />
-        </div>
-
-        {/* ── Divider ─────────────────────────────────────────────────── */}
-        <div style={{
-          height: '1px',
-          background: 'linear-gradient(90deg, transparent, var(--color-border), transparent)',
-          margin: '0 0 32px 0',
-        }} />
-
-        {/* ── Main content: Projects panel + sessions ───────────────── */}
-        <div style={{ display: 'flex', gap: '24px', minHeight: '420px' }}>
-          {/* Projects Panel — fills available space */}
-          <div style={{ flex: 1, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--color-border)', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {/* The catalogue, only once the hero cannot hold everything.
+            ProjectsPanel is the existing searchable list — reused rather than
+            rebuilt, and shared with Reverse Engineering, so it is not touched
+            beyond the badge fix. At a hundred projects its search is the only
+            way to reach the ninety-four the hero does not show. */}
+        {devmate && devmate.hero.total > devmate.hero.shown && (
+          <div style={{
+            marginBottom: 'var(--space-8)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)', overflow: 'hidden',
+          }}>
             <ProjectsPanel
               onSelect={handlePanelProjectSelect}
               selectedId={selectedProject?.id}
-              onCreateNew={handleWizardComplete}
+              onCreateNew={() => setShowWizard(true)}
               onDeleted={id => {
-                // The chat, its context and the query all key off the project. Left
-                // set, the next message would be answered against a deleted project.
-                if (selectedProject?.id !== id) return
-                setSelectedProject(null)
-                setQuery('')
+                // The chat, its context and the query all key off the project.
+                // Left set, the next message would be answered against a
+                // deleted one.
+                if (selectedProject?.id === id) { setSelectedProject(null) }
+                loadDevmate(true)
               }}
             />
           </div>
+        )}
 
-          {/* Recent Sessions */}
-          <div style={{ width: 320, flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--color-muted)' }}>
-                ◈ Recent Sessions
-              </div>
-              <button onClick={refreshSessions} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted)', padding: '2px', display: 'flex' }}>
-                <RefreshCw size={11} />
-              </button>
-            </div>
-
-            {chatSessions.length === 0 ? (
-              <div style={{
-                background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                borderRadius: '12px', padding: '24px', textAlign: 'center',
-                color: 'var(--color-muted)', fontSize: '12px',
-              }}>
-                <MessageSquare size={24} style={{ margin: '0 auto 8px', opacity: 0.4, display: 'block' }} />
-                No sessions yet.<br />Start a chat to see history here.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {chatSessions.slice(0, 8).map(sess => (
-                  <div
-                    key={sess.sessionId}
-                    onClick={() => handleLoadSession(sess)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '10px',
-                      padding: '10px 12px', borderRadius: '10px',
-                      background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                      cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s',
-                      position: 'relative',
-                    }}
-                    onMouseEnter={e => {
-                      (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(124,58,237,0.4)'
-                      const del = (e.currentTarget as HTMLDivElement).querySelector<HTMLElement>('.del-btn')
-                      if (del) del.style.opacity = '1'
-                    }}
-                    onMouseLeave={e => {
-                      (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border)'
-                      const del = (e.currentTarget as HTMLDivElement).querySelector<HTMLElement>('.del-btn')
-                      if (del) del.style.opacity = '0'
-                    }}
-                  >
-                    <div style={{
-                      width: '28px', height: '28px', borderRadius: '8px', flexShrink: 0,
-                      background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Bot size={13} color="#fff" />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {sess.sessionName || sess.projectName}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--color-muted)' }}>{timeAgo(sess.updatedAt)}</span>
-                        {sess.messageCount > 0 && (
-                          <>
-                            <span style={{ color: 'var(--color-border)', fontSize: '9px' }}>·</span>
-                            <span style={{ fontSize: '10px', color: 'var(--color-muted)' }}>{sess.messageCount} msg</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      className="del-btn"
-                      onClick={e => handleDeleteSession(e, sess.sessionId)}
-                      disabled={deletingSession === sess.sessionId}
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer', padding: '3px',
-                        color: '#ef4444', opacity: 0, transition: 'opacity 0.15s', flexShrink: 0,
-                      }}
-                    >
-                      {deletingSession === sess.sessionId
-                        ? <Loader2 size={11} className="animate-spin" />
-                        : <Trash2 size={11} />
-                      }
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+        {devmate?.blocks.map((block, i) => (
+          <div key={`${block.kind}-${i}`} style={{ marginBottom: 'var(--space-8)' }}>
+            {renderBlock(block, `${block.kind}-${i}`, 0.2 + i * 0.08,
+                         sectionAccent(i + 1))}
           </div>
+        ))}
+
+        {devmate?.degraded && devmate.degraded.length > 0 && (
+          <p style={{
+            fontSize: 'var(--text-caption)', color: 'var(--color-muted)',
+            marginBottom: 'var(--space-6)',
+          }}>
+            Some figures are unavailable — could not read: {devmate.degraded.join(', ')}.
+          </p>
+        )}
+
+        {/* ── Usage and cost, collapsed ──────────────────────────────
+            Real data and genuinely useful to an administrator, but it is not
+            what a developer came here for — so it is one click away rather
+            than three screens of it above the projects. */}
+        <div style={{ marginBottom: 'var(--space-8)' }}>
+          <button
+            type="button"
+            className="ov-btn ov-btn-ghost"
+            onClick={() => setShowUsage(v => !v)}
+            style={{ marginBottom: showUsage ? 'var(--space-4)' : 0 }}
+          >
+            Usage &amp; cost
+            <ChevronDown size={14} style={{
+              transform: showUsage ? 'rotate(180deg)' : 'none',
+              transition: 'transform 0.18s ease',
+            }} />
+          </button>
+          {showUsage && <MetricsDashboard />}
         </div>
       </div>
 
-      <style>{`
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-      `}</style>
       </>
     )
   }
@@ -1572,7 +1116,7 @@ export default function DevChatbotPage() {
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-muted)' }}
             >
               {loadingEditData
-                ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                ? <Loader2 size={14} className="animate-spin" />
                 : <Pencil size={14} />
               }
             </button>
@@ -1595,7 +1139,7 @@ export default function DevChatbotPage() {
               }}
             >
               {syncing
-                ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                ? <Loader2 size={12} className="animate-spin" />
                 : <GitBranch size={12} />}
               {syncState.ok ? 'Repo synced' : 'Sync repo'}
             </button>
@@ -1807,7 +1351,7 @@ export default function DevChatbotPage() {
           <div style={{ flex: 1, overflowY: 'auto', padding: '8px 6px' }}>
             {loadingSidebar ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '16px 10px', color: 'var(--color-muted)', fontSize: 12 }}>
-                <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Loading…
+                <Loader2 size={13} className="animate-spin" /> Loading…
               </div>
             ) : projectSessions.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--color-muted)', fontSize: 12 }}>
