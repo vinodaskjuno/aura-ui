@@ -38,6 +38,9 @@ export interface TestRun {
   completedAt?: string
   artifacts?: string[]
   results?: TestResult[]
+  /** This run stored evidence in S3, so the full detail view can open it. Runs from
+   *  the old generation agent have none. */
+  hasEvidence?: boolean
 }
 
 export interface TestResult {
@@ -78,13 +81,16 @@ export interface EmulatorRecord {
 
 export interface RunCase {
   case_id:        string
-  kind:           'api' | 'ui' | 'smoke'
+  kind:           CaseKind
   name:           string
   verifies_label: string
   verifies_eid:   string
   method:         string
   path:           string
   source_file:    string
+  /** Non-empty means the case was planned but cannot execute, and says why —
+   *  "POST needs a request body the graph does not describe". */
+  skip_reason?:   string
 }
 
 export interface RunReport {
@@ -103,7 +109,13 @@ export interface RunReport {
   durationMs:      number
   cases:           RunCase[]
   emulators:       EmulatorRecord[]
-  covered:         { label: string; externalId: string }[]
+  covered:         { label: string; externalId: string; result?: string }[]
+  /** Which kinds the person chose. Empty on a full run, and absent on any report
+   *  written before the picker existed. */
+  selectedKinds?:  CaseKind[]
+  /** Cases in the FULL plan, before filtering — so a partial run is legible as one. */
+  planTotal?:      number
+  coverage?:       QaCoverage
   exploratory:     boolean
 }
 
@@ -124,6 +136,9 @@ export interface QaCapabilities {
   /** Self-hosted runners that reported within the last ~90s. */
   runners: { name: string; lastSeen: string }[]
   reason:  string
+  /** The commands to offer, in order. Structured because the panel used to scrape
+   *  `reason` for a line starting with `python -m`. */
+  commands?: string[]
   clouds:  { name: string; port: number; image: string }[]
 }
 
@@ -139,10 +154,171 @@ export interface QaActiveRun {
   updatedAt: string
   /** Live counts from the runner's heartbeat, so a long run shows movement rather
    *  than sitting on the word "running". */
-  totalPassed?:  number
-  totalFailed?:  number
-  totalSkipped?: number
-  totalCases?:   number
+  totalPassed?:     number
+  totalFailed?:     number
+  totalSkipped?:    number
+  totalUnemulated?: number
+  totalCases?:      number
+  /** What the run is doing right now, in words — "aws emulator ready on :4566". */
+  phaseDetail?: string
+  kinds?: CaseKind[]
+  /** Floci containers serving this run, as the runner last reported them. */
+  emulators?: LiveEmulator[]
+  /** The run's own console — what has happened so far, oldest first. */
+  activity?: RunActivity[]
+  /** The runner went quiet: these containers are almost certainly gone. */
+  emulatorsStale?: boolean
+}
+
+export type CaseKind = 'ui' | 'api' | 'smoke' | 'structure' | 'stack'
+
+/** One line of a run's console: when, which phase, and what happened. */
+export interface RunActivity {
+  at:    string
+  phase: string
+  text:  string
+}
+
+/** One Floci container, as reported by the machine running it. */
+export interface LiveEmulator {
+  cloud:      string
+  image?:     string
+  digest?:    string
+  port?:      number
+  container?: string
+  started?:   boolean
+  stopped?:   boolean
+  error?:     string
+}
+
+/** What a run WOULD do, so a choice can be offered before starting one. */
+export interface QaPlanPreview {
+  projectId:     string
+  totalCases:    number
+  runnableCases: number
+  counts:        Record<CaseKind, number>
+  cases:         RunCase[]
+  clouds:        string[]
+  graphTotals:   { apis: number; services: number }
+  /** False when the project has no API or Service nodes — a different problem from
+   *  "no cases", and the only one the user can act on. */
+  graphReady:    boolean
+  reason:        string
+}
+
+/**
+ * Two numbers, because either alone misleads.
+ *
+ * `nodePct` is how much of the application is known to work; `executionPct` is how
+ * much of the plan the harness could carry out. A run can score 100% execution and
+ * 20% coverage — everything it chose to run ran, but most of the app was never
+ * selected.
+ *
+ * `nodePct` is null, never 0, when there is nothing to measure.
+ */
+export interface QaCoverage {
+  nodeTotal:    number
+  nodeCovered:  number
+  nodePct:      number | null
+  api:          { total: number; covered: number; pct: number | null }
+  service:      { total: number; covered: number; pct: number | null; note: string }
+  planned:      number
+  executed:     number
+  executionPct: number | null
+  skipped:      number
+  unemulated:   number
+  /** Nodes the project has that this run's plan never referenced — an excluded kind,
+   *  or a node added since. Counted in the denominator, so the UI must account for
+   *  them or the arithmetic looks wrong on screen. */
+  notPlanned: number
+  /** The denominator came from the plan, not the graph, so it understates a filtered
+   *  run. Worth saying out loud rather than presenting as project coverage. */
+  denominatorFromPlan: boolean
+  uncovered: {
+    externalId: string
+    label:      string
+    name:       string
+    method?:    string
+    path?:      string
+    result:     string
+    reason:     string
+  }[]
+  runId: string
+}
+
+/** A machine that can execute runs, and what it is running right now. */
+export interface QaRunner {
+  name:           string
+  lastSeen:       string
+  online:         boolean
+  /** The report is older than the staleness window: these containers are LAST KNOWN,
+   *  not current. A sleeping laptop must not look like a busy one. */
+  stale:          boolean
+  podman:         boolean
+  browser:        boolean
+  podmanVersion?: string
+  browserVersion?: string
+  os?:            string
+  busyRunId?:     string
+  protocol:       number
+  /** Protocol 1 agents never report state, so an empty container list from one means
+   *  "cannot tell", not "nothing running". */
+  reportsState:   boolean
+  containers:     QaContainer[]
+  containersAt:   string
+  /** What the runner says is wrong with itself. Absent from an older agent, which is
+   *  "we did not ask" — a different thing from "everything is fine". */
+  health?:        QaRunnerHealth
+  /** A setup the USER started on that machine, reported outward as it runs. Aura
+   *  never starts one. */
+  setup?:         QaRunnerSetup
+}
+
+export interface QaRunnerHealth {
+  ok:        boolean
+  platform?: string
+  checkedAt?: string
+  findings:  QaFinding[]
+}
+
+export interface QaFinding {
+  check:    string
+  /** `blocks` stops a run outright; `degrades` limits what it can test. */
+  severity: 'blocks' | 'degrades' | string
+  title:    string
+  detail?:  string
+  /** The exact commands for that machine. Rendered to copy — never run from here. */
+  remedy?:  string[]
+}
+
+export interface QaRunnerSetup {
+  active: boolean
+  step:   string
+  index:  number
+  total:  number
+  log:    { at: string; text: string }[]
+}
+
+export interface QaContainer {
+  id:        string
+  name:      string
+  image:     string
+  status:    string
+  ports:     string
+  createdAt: string
+  cloud:     string
+  /** Started by Aura. Only these can have their logs fetched. */
+  managed:   boolean
+}
+
+export interface QaContainerLogs {
+  status:     'pending' | 'ready' | 'failed'
+  container:  string
+  lines?:     string[]
+  fetchedAt?: string
+  truncated?: boolean
+  error?:     string
+  requestedAt?: string
 }
 
 export interface TestArtifact {
@@ -160,8 +336,34 @@ export const qaApi = {
 
   // Local execution: podman emulators + Playwright, evidence in S3
   capabilities: () => client.get<QaCapabilities>('/api/qa/capabilities'),
-  runLocal: (data: { project_id: string; app_url: string; run_id?: string; exploratory?: boolean }) =>
+  runLocal: (data: { project_id: string; app_url: string; run_id?: string; kinds?: CaseKind[] }) =>
     client.post<RunReport>('/api/qa/run/local', data),
+
+  /** What a run would do, before starting one. */
+  planPreview: (projectId: string) =>
+    client.get<QaPlanPreview>(`/api/qa/projects/${projectId}/plan`),
+  projectCoverage: (projectId: string) =>
+    client.get<{ projectId: string; runId: string; ranAt: string; coverage: QaCoverage | null }>(
+      `/api/qa/projects/${projectId}/coverage`),
+  /** A single run's counters. A GetItem on the backend — safe to poll. */
+  runProgress: (projectId: string, runId: string) =>
+    client.get(`/api/qa/runs/${runId}/progress`, { params: { projectId } }),
+
+  // ── The machine doing the work ───────────────────────────────────────────
+  runners: () =>
+    client.get<{ runners: QaRunner[]; staleAfterSeconds: number
+                 clouds: { name: string; port: number; image: string }[] }>(
+      '/api/qa/runners'),
+  /** Ask a runner for a container's output. Answered on its NEXT poll — this is a
+   *  round trip, not a stream, and the UI must not call it one. */
+  requestLogs: (runner: string, container: string, tail = 200) =>
+    client.post<{ commandId: string; status: string; deduped?: boolean }>(
+      '/api/qa/runners/logs', { runner, container, tail }),
+  getLogs: (runner: string, commandId: string) =>
+    client.get<QaContainerLogs>(`/api/qa/runners/logs/${commandId}`,
+                                { params: { runner } }),
+  getConsole: (projectId: string, runId: string) =>
+    client.get<{ lines: string[] }>(`/api/qa/results/${projectId}/${runId}/console`),
   /** Stored runs from S3. A bare array — see the note in the backend handler. */
   listResults: (projectId: string) =>
     client.get<RunReport[]>(`/api/qa/results/${projectId}`),
@@ -184,18 +386,31 @@ export const qaApi = {
    * does not wait: the run outlives the browser tab, which the WebSocket-driven local
    * run does not.
    */
-  enqueueRun: (projectId: string, appUrl = '', exploratory = false) =>
-    client.post<{ runId: string; projectId: string; status: string }>(
-      '/api/qa/runs', { project_id: projectId, app_url: appUrl, exploratory }),
+  enqueueRun: (projectId: string, appUrl = '', kinds: CaseKind[] = []) =>
+    client.post<{ runId: string; projectId: string; status: string; kinds: CaseKind[] }>(
+      '/api/qa/runs', { project_id: projectId, app_url: appUrl, kinds }),
   getResult: (projectId: string, runId: string) =>
-    client.get<{ report: RunReport; steps: RunStep[] }>(`/api/qa/results/${projectId}/${runId}`),
+    client.get<{ report: RunReport; steps: RunStep[]; coverage: QaCoverage | null }>(
+      `/api/qa/results/${projectId}/${runId}`),
 }
 
-export const TEST_TYPE_CONFIG: Record<string, { label: string; icon: string; color: string; desc: string }> = {
-  playwright_ui: { label: 'Playwright UI',    icon: 'Monitor',      color: '#4f8ef7', desc: 'End-to-end browser tests' },
-  api:           { label: 'API Testing',      icon: 'Plug2',        color: '#10b981', desc: 'REST endpoint validation' },
-  integration:   { label: 'Integration',      icon: 'GitMerge',     color: '#8b5cf6', desc: 'Cross-service flow tests' },
-  regression:    { label: 'Regression',       icon: 'RefreshCw',    color: '#f59e0b', desc: 'Diff-based change detection' },
-  negative:      { label: 'Negative',         icon: 'XCircle',      color: '#ef4444', desc: 'Invalid input handling' },
-  boundary:      { label: 'Boundary',         icon: 'SlidersHorizontal', color: '#06b6d4', desc: 'Min/max/null/overflow cases' },
-}
+/**
+ * The kinds a plan actually contains, with the words the picker shows.
+ *
+ * This replaces a TEST_TYPE_CONFIG catalogue (playwright_ui / integration / regression
+ * / negative / boundary) that no component ever imported and that named a taxonomy
+ * `plan.build_plan` does not generate — wiring it to the picker would have mislabelled
+ * every case.
+ */
+export const CASE_KINDS: { id: CaseKind; label: string; desc: string; color: string }[] = [
+  { id: 'ui',    label: 'Application',  color: '#4f8ef7',
+    desc: 'Does the app load, render, and not throw' },
+  { id: 'api',   label: 'API routes',   color: '#10b981',
+    desc: 'One case per API node in the knowledge graph' },
+  { id: 'smoke', label: 'Services',     color: '#8b5cf6',
+    desc: 'One per Service node — recorded as skipped, since a Service has no address' },
+  { id: 'structure', label: 'File checks', color: '#f59e0b',
+    desc: 'Validates the files themselves — needs no running application' },
+  { id: 'stack', label: 'Running stack', color: '#06b6d4',
+    desc: 'Starts the project\'s compose stack and asks what only it can answer' },
+]

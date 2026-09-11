@@ -8,6 +8,8 @@ import { qaApi, type QaCapabilities, type RunReport } from '../../api/qa'
 import { useAuthStore } from '../../store/authStore'
 import StepTimeline from './StepTimeline'
 import RunTimeline, { type RunEvent } from './RunTimeline'
+import ProgressBar from './ProgressBar'
+import { progressFromEvents } from './progress'
 import type { RunStep } from '../../api/qa'
 
 /**
@@ -154,6 +156,13 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
               ? 'Tests will run against the URL above, which must already be serving.'
               : 'QualityMind will start the project\u2019s API and UI from its working copy, on free ports, and stop them afterwards.'}
           </span>
+        </div>
+
+        {/* Folded from the event stream the run is already sending — `planned`
+            carries the case count and every step reports, including skipped ones. */}
+        <div style={{ marginBottom: 14 }}>
+          <ProgressBar progress={progressFromEvents(events)}
+                       failing={steps.some(s => s.status === 'failed')} />
         </div>
 
         <RunTimeline events={events} />

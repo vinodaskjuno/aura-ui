@@ -1,14 +1,17 @@
-import { useState, useEffect } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText, Globe, Image, Code, Download, ExternalLink,
   ChevronDown, ChevronRight, X, FileCheck, ShieldCheck, ShieldX, ZoomIn,
 } from 'lucide-react'
-import { qaApi, type TestArtifact } from '../../api/qa'
+import { qaApi, type RunStep, type TestArtifact } from '../../api/qa'
 
 interface ArtifactViewerProps {
   runId: string
   artifacts?: TestArtifact[]
+  /** The run's steps, so a screenshot's status comes from the step that produced it
+   *  rather than being guessed from its filename. */
+  steps?: RunStep[]
 }
 
 type ArtifactGroup = 'html' | 'json' | 'screenshots' | 'scripts' | 'other'
@@ -42,9 +45,28 @@ const GROUP_LABELS: Record<ArtifactGroup, string> = {
   other:       'Other Files',
 }
 
-function isFailed(filename: string): boolean {
-  return filename.toLowerCase().includes('fail') || filename.toLowerCase().includes('error')
+/**
+ * Did the step that produced this screenshot fail?
+ *
+ * This used to be `filename.includes('fail')`, which is wrong in both directions: a
+ * passing test whose URL contains "fail" was marked red, and every real failure whose
+ * filename did not happen to contain the word was marked green. Screenshots are named
+ * `step-0001.png` from the step index, and steps carry a real status — so join on that.
+ *
+ * Falls back to false, not to the old guess: an unknown status is not a failure.
+ */
+function makeFailedLookup(steps: RunStep[] | undefined) {
+  const byKey = new Map<string, string>()
+  for (const step of steps || []) {
+    if (step.screenshotKey) byKey.set(step.screenshotKey.split('/').pop() || '', step.status)
+  }
+  return (filename: string) => byKey.get(filename) === 'failed'
 }
+
+/** Shared with the card, the grid and the lightbox, which are siblings rather than
+ *  children — a context is less invasive than threading a prop through all three. */
+const FailedContext = createContext<(filename: string) => boolean>(() => false)
+const useIsFailed = () => useContext(FailedContext)
 
 interface JsonResultData {
   passed?: number
@@ -137,6 +159,7 @@ function JsonResultPanel({ url }: { url: string }) {
 function ArtifactCard({ artifact }: { artifact: TestArtifact }) {
   const [expanded, setExpanded] = useState(false)
   const [iframeVisible, setIframeVisible] = useState(false)
+  const isFailed = useIsFailed()
   const type = classifyArtifact(artifact.filename)
   const failed = type === 'screenshots' && isFailed(artifact.filename)
 
@@ -239,6 +262,7 @@ function ScreenshotLightbox({ screenshots, onClose }: {
   onClose: () => void
 }) {
   const [current, setCurrent] = useState(0)
+  const isFailed = useIsFailed()
   const s = screenshots[current]
 
   useEffect(() => {
@@ -291,6 +315,7 @@ function ScreenshotLightbox({ screenshots, onClose }: {
 
 function ScreenshotGrid({ screenshots }: { screenshots: TestArtifact[] }) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
+  const isFailed = useIsFailed()
 
   return (
     <>
@@ -338,7 +363,8 @@ function ScreenshotGrid({ screenshots }: { screenshots: TestArtifact[] }) {
   )
 }
 
-export default function ArtifactViewer({ runId, artifacts: propArtifacts }: ArtifactViewerProps) {
+export default function ArtifactViewer({ runId, artifacts: propArtifacts, steps }: ArtifactViewerProps) {
+  const isFailed = useMemo(() => makeFailedLookup(steps), [steps])
   const [artifacts, setArtifacts] = useState<TestArtifact[]>(propArtifacts ?? [])
   const [loading, setLoading] = useState(!propArtifacts)
   const [expandedGroups, setExpandedGroups] = useState<Set<ArtifactGroup>>(
@@ -390,49 +416,51 @@ export default function ArtifactViewer({ runId, artifacts: propArtifacts }: Arti
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {(Object.entries(grouped) as [ArtifactGroup, TestArtifact[]][]).map(([group, items]) => {
-        if (items.length === 0) return null
-        const open = expandedGroups.has(group)
+    <FailedContext.Provider value={isFailed}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {(Object.entries(grouped) as [ArtifactGroup, TestArtifact[]][]).map(([group, items]) => {
+          if (items.length === 0) return null
+          const open = expandedGroups.has(group)
 
-        return (
-          <div key={group}>
-            {/* Group header */}
-            <button onClick={() => toggleGroup(group)}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 0',
-                background: 'none', border: 'none', cursor: 'pointer', marginBottom: 8 }}>
-              {open
-                ? <ChevronDown size={14} color="var(--color-muted)" />
-                : <ChevronRight size={14} color="var(--color-muted)" />}
-              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-                letterSpacing: '0.08em', color: 'var(--color-subtext)' }}>
-                {GROUP_LABELS[group]}
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--color-muted)', fontWeight: 500 }}>
-                ({items.length})
-              </span>
-              <div style={{ flex: 1, height: 1, background: 'var(--color-border)', marginLeft: 4 }} />
-            </button>
+          return (
+            <div key={group}>
+              {/* Group header */}
+              <button onClick={() => toggleGroup(group)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 0',
+                  background: 'none', border: 'none', cursor: 'pointer', marginBottom: 8 }}>
+                {open
+                  ? <ChevronDown size={14} color="var(--color-muted)" />
+                  : <ChevronRight size={14} color="var(--color-muted)" />}
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: '0.08em', color: 'var(--color-subtext)' }}>
+                  {GROUP_LABELS[group]}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--color-muted)', fontWeight: 500 }}>
+                  ({items.length})
+                </span>
+                <div style={{ flex: 1, height: 1, background: 'var(--color-border)', marginLeft: 4 }} />
+              </button>
 
-            {/* Group items */}
-            <AnimatePresence>
-              {open && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  {group === 'screenshots' ? (
-                    <ScreenshotGrid screenshots={items} />
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {items.map(a => (
-                        <ArtifactCard key={a.key} artifact={a} />
-                      ))}
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )
-      })}
-    </div>
+              {/* Group items */}
+              <AnimatePresence>
+                {open && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                    {group === 'screenshots' ? (
+                      <ScreenshotGrid screenshots={items} />
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {items.map(a => (
+                          <ArtifactCard key={a.key} artifact={a} />
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )
+        })}
+      </div>
+    </FailedContext.Provider>
   )
 }

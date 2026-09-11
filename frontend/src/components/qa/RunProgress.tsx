@@ -3,6 +3,10 @@ import {
   Boxes, Camera, CheckCircle2, Clock, Cloud, Loader2, PlayCircle, Rocket, XCircle,
 } from 'lucide-react'
 import type { QaActiveRun } from '../../api/qa'
+import ProgressBar from './ProgressBar'
+import { RunEmulators } from './FlociContainerTable'
+import LiveActivity from './LiveActivity'
+import { runProgress } from './progress' 
 
 /**
  * What a run is doing, right now.
@@ -61,9 +65,7 @@ export default function RunProgress({ run }: { run: QaActiveRun }) {
   }, [])
 
   const at = phaseIndex(run)
-  const done = (run.totalPassed ?? 0) + (run.totalFailed ?? 0) + (run.totalSkipped ?? 0)
-  const total = run.totalCases ?? 0
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0
+  const progress = runProgress(run)
   const failing = (run.totalFailed ?? 0) > 0
 
   return (
@@ -116,9 +118,9 @@ export default function RunProgress({ run }: { run: QaActiveRun }) {
         })}
       </div>
 
-      {/* Counts, only once there are any — a bar reading 0% is worse than no bar. */}
-      {total > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {/* Always shown. When the plan size is not known yet the bar sweeps and says
+          so, rather than reading 0% — which would claim nothing has worked. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11.5,
             fontVariantNumeric: 'tabular-nums' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#10b981' }}>
@@ -131,16 +133,21 @@ export default function RunProgress({ run }: { run: QaActiveRun }) {
             <span style={{ color: 'var(--color-muted)' }}>
               {run.totalSkipped ?? 0} skipped
             </span>
-            <span style={{ marginLeft: 'auto', color: 'var(--color-subtext)' }}>
-              {done} of {total}
-            </span>
+            {(run.totalUnemulated ?? 0) > 0 && (
+              <span style={{ color: '#8b5cf6' }}>{run.totalUnemulated} not emulated</span>
+            )}
           </div>
-          <div style={{ height: 4, borderRadius: 2, overflow: 'hidden',
-            background: 'var(--color-surface)' }}>
-            <div style={{ height: '100%', width: `${pct}%`, borderRadius: 2,
-              background: failing ? '#ef4444' : '#10b981', transition: 'width 0.4s' }} />
-          </div>
+          <ProgressBar progress={progress} failing={failing} height={4} />
         </div>
+
+      {/* The Floci containers serving this run, live from its heartbeat. */}
+      {!!run.emulators?.length && (
+        <RunEmulators emulators={run.emulators} stale={run.emulatorsStale} />
+      )}
+
+      {/* And what it is actually doing, line by line. */}
+      {!!run.activity?.length && (
+        <LiveActivity activity={run.activity} maxHeight={160} />
       )}
     </div>
   )

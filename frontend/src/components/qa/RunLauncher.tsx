@@ -4,7 +4,13 @@ import {
   Boxes, Camera, CheckCircle2, Clock, Cloud, ExternalLink, Loader2, MinusCircle,
   PlayCircle, Rocket, X, XCircle,
 } from 'lucide-react'
-import { qaApi, type QaActiveRun, type RunReport, type RunStep } from '../../api/qa'
+import { qaApi, type CaseKind, type QaActiveRun, type QaPlanPreview,
+         type RunReport, type RunStep } from '../../api/qa'
+import ProgressBar from './ProgressBar'
+import TestPlanPicker, { selectedCount } from './TestPlanPicker'
+import { RunEmulators } from './FlociContainerTable'
+import LiveActivity from './LiveActivity'
+import { runProgress } from './progress' 
 
 /**
  * Start a run and watch it happen, from the project list.
@@ -82,6 +88,8 @@ export default function RunLauncher({ project, canRun, reason, runners, onClose,
   const [error, setError] = useState('')
   const [starting, setStarting] = useState(false)
   const [zoom, setZoom] = useState<RunStep | null>(null)
+  const [kinds, setKinds] = useState<CaseKind[]>([])
+  const [plan, setPlan] = useState<QaPlanPreview | null>(null)
   const startedAt = useRef<number>(0)
   const [, tick] = useState(0)
 
@@ -96,7 +104,7 @@ export default function RunLauncher({ project, canRun, reason, runners, onClose,
   const start = async () => {
     setStarting(true); setError('')
     try {
-      const { data } = await qaApi.enqueueRun(project.projectId, appUrl.trim())
+      const { data } = await qaApi.enqueueRun(project.projectId, appUrl.trim(), kinds)
       setRunId(data.runId)
       startedAt.current = Date.now()
     } catch (e: unknown) {
@@ -136,11 +144,12 @@ export default function RunLauncher({ project, canRun, reason, runners, onClose,
   }, [runId, report, project.projectId, finish])
 
   const at = phaseIndex(active)
-  const done = report
-    ? (report.totalPassed ?? 0) + (report.totalFailed ?? 0) + (report.totalSkipped ?? 0)
-    : (active?.totalPassed ?? 0) + (active?.totalFailed ?? 0) + (active?.totalSkipped ?? 0)
-  const total = report ? done : (active?.totalCases ?? 0)
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0
+  const progress = report
+    ? runProgress({ totalPassed: report.totalPassed, totalFailed: report.totalFailed,
+                    totalSkipped: report.totalSkipped,
+                    totalUnemulated: report.totalUnemulated,
+                    totalCases: report.cases?.length })
+    : runProgress(active ?? {})
   const elapsed = startedAt.current
     ? Math.floor((Date.now() - startedAt.current) / 1000) : 0
   const shots = steps.filter(s => s.screenshotUrl)
@@ -208,6 +217,9 @@ export default function RunLauncher({ project, canRun, reason, runners, onClose,
                 </code>
               </div>
             )}
+            <TestPlanPicker projectId={project.projectId} value={kinds}
+                            onChange={setKinds} onPlan={setPlan} />
+
             <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>
                 Application URL (optional)
@@ -231,7 +243,8 @@ export default function RunLauncher({ project, canRun, reason, runners, onClose,
                 opacity: canRun ? 1 : 0.5,
                 cursor: canRun ? 'pointer' : 'not-allowed' }}>
               {starting ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={14} />}
-              Start a run
+              {plan ? `Run ${selectedCount(plan, kinds)} of ${plan.totalCases} cases`
+                    : 'Start a run'}
             </button>
           </div>
         )}
@@ -281,32 +294,38 @@ export default function RunLauncher({ project, canRun, reason, runners, onClose,
               })}
             </div>
 
-            {/* Case counts, only once the runner knows the plan size. A bar sitting at
-                0 of 0 tells you less than no bar. */}
-            {total > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 11.5,
-                  fontVariantNumeric: 'tabular-nums' }}>
-                  <span style={{ color: '#10b981' }}>{active?.totalPassed ?? 0} passed</span>
-                  <span style={{ color: (active?.totalFailed ?? 0) > 0 ? '#ef4444' : 'var(--color-muted)' }}>
-                    {active?.totalFailed ?? 0} failed
+            {/* One bar, determinate or not. A queued run has not been claimed, so
+                nothing has counted its cases yet — that is "unknown", not 0%. */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 11.5,
+                fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ color: '#10b981' }}>{active?.totalPassed ?? 0} passed</span>
+                <span style={{ color: (active?.totalFailed ?? 0) > 0 ? '#ef4444' : 'var(--color-muted)' }}>
+                  {active?.totalFailed ?? 0} failed
+                </span>
+                <span style={{ color: 'var(--color-muted)' }}>
+                  {active?.totalSkipped ?? 0} skipped
+                </span>
+                {(active?.totalUnemulated ?? 0) > 0 && (
+                  <span style={{ color: '#8b5cf6' }}>
+                    {active?.totalUnemulated} not emulated
                   </span>
-                  <span style={{ color: 'var(--color-muted)' }}>
-                    {active?.totalSkipped ?? 0} skipped
-                  </span>
-                  <span style={{ marginLeft: 'auto', color: 'var(--color-subtext)' }}>
-                    {done} of {total}
-                  </span>
-                </div>
-                <div style={{ height: 5, borderRadius: 3, overflow: 'hidden',
-                  background: 'var(--color-surface)' }}>
-                  <motion.div animate={{ width: `${pct}%` }}
-                    transition={{ type: 'spring', stiffness: 120, damping: 20 }}
-                    style={{ height: '100%', borderRadius: 3,
-                      background: (active?.totalFailed ?? 0) > 0 ? '#ef4444' : '#10b981' }} />
-                </div>
+                )}
               </div>
+              <ProgressBar progress={progress} failing={(active?.totalFailed ?? 0) > 0} />
+            </div>
+
+            {/* Floci, as the runner reports it — the containers serving THIS run. */}
+            {!!active?.emulators?.length && (
+              <RunEmulators emulators={active.emulators}
+                            stale={active.emulatorsStale} />
             )}
+
+            {/* Every event the runner reported, in order — the Floci container
+                being started and answering, the app coming up, each case as it
+                runs. Without it a remote run is one sentence that keeps changing. */}
+            <LiveActivity activity={active?.activity ?? []}
+                          live={!report} maxHeight={200} />
 
             <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
               {active?.runner

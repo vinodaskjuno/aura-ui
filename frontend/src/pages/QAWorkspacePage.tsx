@@ -3,28 +3,35 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   FlaskConical, RefreshCw, Layers3, Activity, FileCheck,
   ChevronDown, ChevronUp, FileText, Server, ShieldCheck, ShieldX,
-  X, Download, Camera, Play,
+  X, Download, Play,
 } from 'lucide-react'
-import { qaApi, type TestRun, type TestArtifact } from '../api/qa'
+import { qaApi, type CaseKind, type QaCapabilities, type QaCoverage,
+         type TestRun, type TestArtifact } from '../api/qa'
 import LocalRunView from '../components/qa/LocalRunView'
-import ResultsBrowser from '../components/qa/ResultsBrowser'
 import RunLauncher from '../components/qa/RunLauncher'
+import RunDetail from '../components/qa/RunDetail'
+import RunProgress from '../components/qa/RunProgress'
+import RunnerPanel from '../components/qa/RunnerPanel'
+import RunnerStatusChip from '../components/qa/RunnerStatusChip'
 import ProjectStatusBoard from '../components/qa/ProjectStatusBoard'
 import ActivityFeed from '../components/qa/ActivityFeed'
-import ArtifactViewer from '../components/qa/ArtifactViewer'
-import DemoScreenshots from '../components/qa/DemoScreenshots'
-import { SAMPLE_PROJECT, SAMPLE_SUITES, DEMO_PROJECT_ID } from '../data/qa-sample'
+import CoverageSummary from '../components/qa/CoverageSummary'
+import { useQaRunners } from '../components/qa/useQaRunners'
+import { pctColor } from '../components/qa/progress'
 
 // ── Tab definition ────────────────────────────────────────────────────────────
-type Tab = 'runs' | 'results' | 'artifacts' | 'activity'
+type Tab = 'runs' | 'coverage' | 'runner' | 'activity'
 
+// Four, as before. `Results` was a second rendering of the same S3 data the Runs tab
+// already lists, and `Artifacts` was a project-level picker for something that belongs
+// to a single run — both now live inside RunDetail, which pays for the two new tabs.
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'runs',      label: 'Test Runs',    icon: <Layers3 size={13} /> },
-  // Stored evidence, read from S3 — visible in every environment including this
-  // one, because a run executed on a laptop writes to the same bucket.
-  { id: 'results',   label: 'Results',      icon: <Camera size={13} /> },
-  { id: 'artifacts', label: 'Artifacts',    icon: <FileCheck size={13} /> },
-  { id: 'activity',  label: 'Activity',     icon: <Activity size={13} /> },
+  { id: 'runs',     label: 'Test Runs', icon: <Layers3 size={13} /> },
+  { id: 'coverage', label: 'Coverage',  icon: <ShieldCheck size={13} /> },
+  // The machine doing the work, and the Floci containers on it. The API runs on
+  // Fargate and can never see them itself — everything here is reported by the runner.
+  { id: 'runner',   label: 'Runner',    icon: <Server size={13} /> },
+  { id: 'activity', label: 'Activity',  icon: <Activity size={13} /> },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -352,7 +359,7 @@ function TestRunsTab({ suites, projectId, onViewArtifacts, onRefresh }: {
 }
 
 // ── Stats Bar ─────────────────────────────────────────────────────────────────
-function StatsBar({ suites }: { suites: TestRun[] }) {
+function StatsBar({ suites, coverage }: { suites: TestRun[]; coverage: QaCoverage | null }) {
   if (!suites.length) return null
 
   const totalPassed = suites.reduce((s, r) => s + (r.totalPassed ?? 0), 0)
@@ -360,7 +367,6 @@ function StatsBar({ suites }: { suites: TestRun[] }) {
   const totalTests  = totalPassed + totalFailed
   const passRate    = totalTests > 0 ? Math.round((totalPassed / totalTests) * 100) : null
   const lastRun     = suites[0]?.createdAt ? new Date(suites[0].createdAt) : null
-  const artifactCount = suites.reduce((s, r) => s + (r.artifacts?.length ?? 0), 0)
 
   const stats = [
     { label: 'Total Runs',    value: String(suites.length), color: 'var(--color-primary)' },
@@ -369,7 +375,12 @@ function StatsBar({ suites }: { suites: TestRun[] }) {
     { label: 'Last Run',
       value: lastRun ? lastRun.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—',
       color: 'var(--color-text)' },
-    { label: 'Artifacts',     value: String(artifactCount), color: '#8b5cf6' },
+    // Replaces an "Artifacts" cell that summed `run.artifacts?.length` — undefined
+    // for every run stored in S3, so it read 0 always and was worse than nothing.
+    { label: 'Coverage',
+      value: coverage?.nodePct !== null && coverage?.nodePct !== undefined
+        ? `${coverage.nodePct}%` : '—',
+      color: pctColor(coverage?.nodePct ?? null) },
   ]
 
   return (
@@ -393,55 +404,51 @@ export default function QAWorkspacePage() {
   const [selectedProject, setSelectedProject] = useState<any>(null)
   const [suites, setSuites]               = useState<TestRun[]>([])
   const [tab, setTab]                     = useState<Tab>('runs')
-  const [activeArtifactRunId, setActiveArtifactRunId] = useState<string | null>(null)
+  const [openRunId, setOpenRunId]         = useState<string | null>(null)
   const [launchProject, setLaunchProject] = useState<any>(null)
+  const [active, setActive]               = useState<any[]>([])
+  const [coverage, setCoverage]           = useState<QaCoverage | null>(null)
+  const [coverageRun, setCoverageRun]     = useState('')
   // Probed once here rather than inside the launcher, so the card can be pressed and
   // the modal can explain immediately instead of flashing a disabled button.
-  const [caps, setCaps] = useState<
-    { canRun: boolean; reason: string; runners: number } | null>(null)
+  const [caps, setCaps] = useState<QaCapabilities | null>(null)
 
   useEffect(() => {
     qaApi.capabilities()
-      .then(r => setCaps({ canRun: r.data.canRun, reason: r.data.reason,
-                           runners: r.data.runners?.length ?? 0 }))
-      .catch(() => setCaps({ canRun: false, runners: 0,
-                             reason: 'Could not reach the QA service.' }))
+      .then(r => setCaps(r.data))
+      .catch(() => setCaps(null))
   }, [])
 
-  // Default to the newest run when the Artifacts tab is opened with nothing selected.
-  // Making someone pick a run before showing them anything is a wasted click in the
-  // overwhelmingly common case — they want the run they just did.
-  useEffect(() => {
-    if (tab === 'artifacts' && !activeArtifactRunId && suites.length > 0) {
-      setActiveArtifactRunId(suites[0].testRunId)
-    }
-  }, [tab, activeArtifactRunId, suites])
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [suitesLoading, setSuitesLoading]     = useState(false)
-  const [demoMode, setDemoMode]               = useState(false)
+
+  // One owner of the runner poll for the whole page. Three components polling
+  // independently would be three requests a tick against shared state.
+  const runnersState = useQaRunners({
+    active: active.length > 0,
+    watching: tab === 'runner',
+  })
 
   // ── Load projects ───────────────────────────────────────────────────────────
   const loadProjects = useCallback(async () => {
     setProjectsLoading(true)
     try {
       const r = await qaApi.listProjects()
-      const data = r.data as any[]
-      // Always pin the demo project at the top for leadership presentation
-      setProjects([SAMPLE_PROJECT, ...data])
-      setSelectedProject((prev: any) => prev === null ? SAMPLE_PROJECT : prev)
+      const data = (r.data as any[]) ?? []
+      // Real projects only. A sample project used to be pinned first and auto-selected
+      // "for leadership presentation", so the default landing state showed a customer
+      // a project they do not have, with a pass rate they did not earn — and two clicks
+      // in, hand-drawn mock-ups of Aura's own login page. An empty state is better.
+      setProjects(data)
+      setSelectedProject((prev: any) => prev ?? data[0] ?? null)
     } catch {
-      setProjects([SAMPLE_PROJECT])
-      setSelectedProject((prev: any) => prev === null ? SAMPLE_PROJECT : prev)
+      setProjects([])
     }
     finally { setProjectsLoading(false) }
   }, [])
 
   // ── Load suites for selected project ────────────────────────────────────────
   const loadSuites = useCallback(async (projectId: string) => {
-    if (projectId === DEMO_PROJECT_ID) {
-      setSuites(SAMPLE_SUITES)
-      return
-    }
     setSuitesLoading(true)
     try {
       const r = await qaApi.getSuites(projectId)
@@ -455,21 +462,66 @@ export default function QAWorkspacePage() {
     if (selectedProject) loadSuites(selectedProject.projectId as string)
   }, [selectedProject, loadSuites])
 
-  // ── Sync demoMode whenever selected project changes ──────────────────────────
+  // ── In-flight runs, and this project's coverage ─────────────────────────────
   useEffect(() => {
-    setDemoMode(selectedProject?.projectId === DEMO_PROJECT_ID)
-  }, [selectedProject])
+    const projectId = selectedProject?.projectId
+    if (!projectId) { setActive([]); return }
+    let stop = false
+    const poll = async () => {
+      try {
+        const { data } = await qaApi.activeRuns(projectId)
+        if (!stop) setActive(data.active ?? [])
+      } catch { /* a dropped poll is not a failed run */ }
+    }
+    poll()
+    // Only while something is running. An idle project does not need a 2.5s poll
+    // against an endpoint that scans.
+    const t = setInterval(poll, active.length ? 2500 : 15000)
+    return () => { stop = true; clearInterval(t) }
+  }, [selectedProject, active.length])
+
+  useEffect(() => {
+    const projectId = selectedProject?.projectId
+    if (!projectId) { setCoverage(null); return }
+    let stop = false
+    qaApi.projectCoverage(projectId)
+      .then(({ data }) => {
+        if (stop) return
+        setCoverage(data.coverage)
+        setCoverageRun(data.runId || '')
+      })
+      .catch(() => { if (!stop) { setCoverage(null); setCoverageRun('') } })
+    return () => { stop = true }
+  }, [selectedProject, suites.length])
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleSelectProject = (p: any) => {
     setSelectedProject(p)
     setTab('runs')
-    setActiveArtifactRunId(null)
+    setOpenRunId(null)
   }
 
   const handleViewArtifacts = (runId: string) => {
-    setActiveArtifactRunId(runId)
-    setTab('artifacts')
+    setOpenRunId(runId)
+    setTab('runs')
+  }
+
+  /** Floci containers for a run that is still executing, from its heartbeat. A
+   *  finished run has none — its emulators are in the stored report instead. */
+  const liveFor = (runId: string) => {
+    const run = active.find(r => r.runId === runId)
+    return run?.emulators?.length
+      ? { emulators: run.emulators, stale: !!run.emulatorsStale }
+      : null
+  }
+
+  const rerun = async (kinds: CaseKind[]) => {
+    if (!selectedProject) return
+    try {
+      await qaApi.enqueueRun(selectedProject.projectId as string, '', kinds)
+      setOpenRunId(null)
+      handleRefreshSuites()
+    } catch { /* the launcher surfaces failures; this is a shortcut */ }
   }
 
   const handleRefreshSuites = () => {
@@ -529,13 +581,6 @@ export default function QAWorkspacePage() {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
                   <div className="section-label">QA Engineer</div>
-                  {demoMode && (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 8px', borderRadius: 4,
-                      background: 'rgba(124,58,237,0.15)', color: '#a78bfa',
-                      border: '1px solid rgba(124,58,237,0.35)' }}>
-                      DEMO
-                    </span>
-                  )}
                 </div>
                 <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: 20, fontWeight: 800,
                   display: 'flex', alignItems: 'center', gap: 9, margin: 0 }}>
@@ -543,7 +588,9 @@ export default function QAWorkspacePage() {
                   {selectedProject.name as string}
                 </h2>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <RunnerStatusChip runners={runnersState.runners}
+                                  onClick={() => setTab('runner')} />
                 <button
                   className="ov-btn ov-btn-ghost"
                   onClick={handleRefreshSuites}
@@ -556,7 +603,7 @@ export default function QAWorkspacePage() {
             </div>
 
             {/* Stats bar */}
-            <StatsBar suites={suites} />
+            <StatsBar suites={suites} coverage={coverage} />
 
             {/* Tab bar */}
             <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--color-border)',
@@ -578,61 +625,68 @@ export default function QAWorkspacePage() {
             {/* Tab content */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 24px' }}>
               {tab === 'runs' && (
-                <>
-                  <TestRunsTab
-                    suites={suites}
+                openRunId ? (
+                  <RunDetail
                     projectId={selectedProject.projectId as string}
-                    onViewArtifacts={handleViewArtifacts}
-                    onRefresh={handleRefreshSuites}
+                    runId={openRunId}
+                    status={suites.find(r => r.testRunId === openRunId)?.status}
+                    onBack={() => setOpenRunId(null)}
+                    onRerun={rerun}
+                    live={liveFor(openRunId)}
                   />
-                </>
-              )}
-
-              {tab === 'results' && (
-                <ResultsBrowser projectId={selectedProject.projectId as string} />
-              )}
-
-              {tab === 'artifacts' && (
-                <>
-                  {/* Demo screenshot gallery */}
-                  {demoMode && (
-                    <div style={{ marginBottom: 20 }}>
-                      <DemoScreenshots runId={activeArtifactRunId} />
-                    </div>
-                  )}
-                  {activeArtifactRunId && !demoMode ? (
-                    <ArtifactViewer runId={activeArtifactRunId} />
-                  ) : !demoMode && suites.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      <div style={{ fontSize: 13, color: 'var(--color-muted)' }}>
-                        Pick a run to view its screenshots and artifacts:
+                ) : (
+                  <>
+                    {/* Queued and executing runs. S3 cannot see these at all —
+                        report.json is written last and its presence is the done
+                        signal — so they come from the queue. */}
+                    {active.length > 0 && (
+                      <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
+                        {active.map(run => (
+                          <RunProgress key={run.runId} run={run} />
+                        ))}
                       </div>
-                      {suites.slice(0, 8).map(run => (
-                        <button key={run.testRunId}
-                          onClick={() => setActiveArtifactRunId(run.testRunId)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-                            background: 'var(--color-card)', border: '1px solid var(--color-border)',
-                            borderRadius: 10, cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }}>
-                          <FileCheck size={14} color="var(--color-primary)" />
-                          <div>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text)',
-                              fontFamily: 'var(--font-mono)' }}>
-                              Run #{run.testRunId.slice(0, 8).toUpperCase()}
-                            </div>
-                            <div style={{ fontSize: 11, color: 'var(--color-muted)' }}>
-                              {new Date(run.createdAt).toLocaleString()} · {run.artifacts?.length ?? 0} artifacts
-                            </div>
-                          </div>
-                          <StatusBadge status={run.status} />
-                        </button>
-                      ))}
-                    </div>
-                  ) : !demoMode ? (
-                    <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--color-muted)', fontSize: 13 }}>
-                      No artifacts yet. Run tests first.
-                    </div>
-                  ) : null}
-                </>
+                    )}
+                    <TestRunsTab
+                      suites={suites}
+                      projectId={selectedProject.projectId as string}
+                      onViewArtifacts={handleViewArtifacts}
+                      onRefresh={handleRefreshSuites}
+                    />
+                  </>
+                )
+              )}
+
+              {tab === 'coverage' && (
+                coverage ? (
+                  <div style={{ display: 'grid', gap: 14 }}>
+                    <CoverageSummary coverage={coverage} />
+                    {!!coverageRun && (
+                      <button onClick={() => { setOpenRunId(coverageRun); setTab('runs') }}
+                        style={{ justifySelf: 'start', fontSize: 11, background: 'none',
+                          border: 'none', cursor: 'pointer', padding: 0,
+                          color: 'var(--color-primary)' }}>
+                        From run {coverageRun} — open it
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ padding: '40px 20px', textAlign: 'center',
+                    color: 'var(--color-muted)', fontSize: 13, lineHeight: 1.7 }}>
+                    No coverage yet. Run the tests once and this will show which API and
+                    Service nodes are verified — and which are not, with the reason.
+                  </div>
+                )
+              )}
+
+              {tab === 'runner' && (
+                <RunnerPanel
+                  runners={runnersState.runners}
+                  caps={caps}
+                  loading={runnersState.loading}
+                  error={runnersState.error}
+                  lastUpdated={runnersState.lastUpdated}
+                  onRefresh={runnersState.refresh}
+                />
               )}
 
               {tab === 'activity' && (
@@ -671,7 +725,7 @@ export default function QAWorkspacePage() {
             project={launchProject}
             canRun={caps?.canRun ?? false}
             reason={caps?.reason ?? ''}
-            runners={caps?.runners ?? 0}
+            runners={caps?.runners?.length ?? 0}
             onClose={() => setLaunchProject(null)}
             onFinished={() => {
               if (selectedProject) loadSuites(selectedProject.projectId as string)

@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   CheckCircle2, XCircle, AlertCircle, Clock, User, Server, Laptop,
   ChevronDown, ChevronRight, Image, Bot, FileText, Timer,
 } from 'lucide-react'
-import type { TestRun } from '../../api/qa'
+import { qaApi, type TestRun } from '../../api/qa'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -334,11 +334,25 @@ function RunCard({ run, index }: { run: TestRun; index: number }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ActivityFeed({ projectId, runs }: ActivityFeedProps) {
+  // Fetches its own data. It used to render whatever `runs` it was handed, which on
+  // the pinned demo project meant it showed sample activity — an endpoint for exactly
+  // this existed the whole time and nothing called it.
+  const [fetched, setFetched] = useState<TestRun[] | null>(null)
+  useEffect(() => {
+    let stop = false
+    qaApi.getActivity()
+      .then(({ data }) => { if (!stop) setFetched(Array.isArray(data) ? data : data?.runs ?? []) })
+      .catch(() => { if (!stop) setFetched([]) })
+    return () => { stop = true }
+  }, [])
+
+  const source = fetched ?? runs ?? []
+
   const sorted = useMemo(() => {
-    return (runs ?? [])
+    return (source)
       .filter(r => !projectId || r.projectId === projectId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  }, [runs, projectId])
+  }, [source, projectId])
 
   const groups = useMemo(() => groupByDate(sorted), [sorted])
 
