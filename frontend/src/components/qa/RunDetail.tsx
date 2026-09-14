@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import {
-  ArrowLeft, CheckCircle2, Clock, CloudOff, MinusCircle, Play, RefreshCw,
+  ArrowLeft, CheckCircle2, Clock, CloudOff, Laptop, MinusCircle, Play, RefreshCw,
   User, XCircle,
 } from 'lucide-react'
 import { qaApi } from '../../api/qa'
-import type { CaseKind, QaCoverage, RunReport, RunStep, TestArtifact } from '../../api/qa'
+import type { CaseKind, QaActiveRun, QaCoverage, RunReport, RunStep,
+              TestArtifact } from '../../api/qa'
 import CaseTable from './CaseTable'
 import CoverageSummary from './CoverageSummary'
 import EmulatorTable from './EmulatorTable'
@@ -12,6 +13,8 @@ import ConsoleLog from './ConsoleLog'
 import StepTimeline from './StepTimeline'
 import ArtifactViewer from './ArtifactViewer'
 import { RunEmulators } from './FlociContainerTable'
+import FlociTerminal from './FlociTerminal'
+import { runMachineLabel, runMachineName } from './useQaRunners'
 import { executionRate, hasCoverage } from './progress'
 
 /**
@@ -25,15 +28,18 @@ import { executionRate, hasCoverage } from './progress'
  * Inline rather than a drawer, because none of that fits in 380px — which is why the
  * drawer showed none of it.
  */
-export default function RunDetail({ projectId, runId, status, onBack, onRerun, live }: {
+export default function RunDetail({ projectId, runId, status, onBack, onRerun, live,
+                                   you }: {
   projectId: string
   runId: string
   /** From the list row, so the header paints before the fetch lands. */
   status?: string
   onBack: () => void
   onRerun?: (kinds: CaseKind[]) => void
-  /** Emulators for a run still in flight, from its heartbeat. */
-  live?: { emulators: any[]; stale: boolean } | null
+  /** The queue's view of this run while it is still executing. Null once it has
+   *  finished — S3 holds the report from then on. */
+  live?: QaActiveRun | null
+  you?: string
 }) {
   const [report, setReport] = useState<RunReport | null>(null)
   const [steps, setSteps] = useState<RunStep[]>([])
@@ -41,6 +47,8 @@ export default function RunDetail({ projectId, runId, status, onBack, onRerun, l
   const [artifacts, setArtifacts] = useState<TestArtifact[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const liveMachine = live ? runMachineLabel(live, you) : ''   // prose
+  const liveMachineName = live ? runMachineName(live) : ''     // chrome
 
   useEffect(() => {
     let stop = false
@@ -130,6 +138,11 @@ export default function RunDetail({ projectId, runId, status, onBack, onRerun, l
                 </Meta>
               )}
               {!!report.ranBy && <Meta icon={<User size={11} />}>{report.ranBy}</Meta>}
+              {/* Where it executed. Prose, so it names the owner — the section titles
+                  below use the bare machine name. */}
+              {!!liveMachine && (
+                <Meta icon={<Laptop size={11} />}>executed locally on {liveMachine}</Meta>
+              )}
               {!!report.appUrl && (
                 <Meta>{report.appUrl}</Meta>
               )}
@@ -150,10 +163,19 @@ export default function RunDetail({ projectId, runId, status, onBack, onRerun, l
             : <Section title="Coverage"><FallbackCoverage report={report} steps={steps} /></Section>}
 
           {live?.emulators?.length ? (
-            <Section title="Floci, right now">
-              <RunEmulators emulators={live.emulators} stale={live.stale} />
+            <Section title={`Floci, right now${liveMachineName ? ` — ${liveMachineName}` : ''}`}>
+              <RunEmulators emulators={live.emulators} stale={live.emulatorsStale} />
             </Section>
           ) : null}
+
+          {/* Only while it is still running. A finished run's console is the stored
+              one below, which is a different thing and already has a section. */}
+          {live && (
+            <Section title="Output">
+              <FlociTerminal activity={live.activity ?? []} machine={liveMachineName}
+                             state={live.emulatorsStale ? 'stalled' : 'live'} />
+            </Section>
+          )}
 
           <Section title={`Test cases (${report.cases?.length ?? 0})`}>
             {report.cases?.length

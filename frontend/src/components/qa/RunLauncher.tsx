@@ -4,12 +4,14 @@ import {
   Boxes, Camera, CheckCircle2, Clock, Cloud, ExternalLink, Loader2, MinusCircle,
   PlayCircle, Rocket, X, XCircle,
 } from 'lucide-react'
-import { qaApi, type CaseKind, type QaActiveRun, type QaPlanPreview,
+import { qaApi, type CaseKind, type QaActiveRun, type QaPlanPreview, type QaRunner,
          type RunReport, type RunStep } from '../../api/qa'
 import ProgressBar from './ProgressBar'
 import TestPlanPicker, { selectedCount } from './TestPlanPicker'
 import { RunEmulators } from './FlociContainerTable'
-import LiveActivity from './LiveActivity'
+import FlociTerminal from './FlociTerminal'
+import { localState, runMachineLabel, runMachineName,
+         runnerLabel } from './useQaRunners'
 import { runProgress } from './progress' 
 
 /**
@@ -70,13 +72,16 @@ const STATUS_LOOK: Record<string, { color: string; icon: React.ReactNode; label:
   unemulated: { color: '#f59e0b', icon: <MinusCircle size={13} />, label: 'Not emulated' },
 }
 
-export default function RunLauncher({ project, canRun, reason, runners, onClose,
+export default function RunLauncher({ project, canRun, reason, runners, you, onClose,
                                      onFinished }: {
   project: { projectId: string; name?: string }
   canRun: boolean
   reason: string
-  /** Self-hosted runners online. Zero means a queued run has nobody to claim it. */
-  runners: number
+  /** The local machines that could claim this run. Empty means it will simply wait.
+   *  The full list rather than a count, so the modal can say WHERE it will execute
+   *  before anyone presses Start. */
+  runners: QaRunner[]
+  you?: string
   onClose: () => void
   onFinished: () => void
 }) {
@@ -143,6 +148,12 @@ export default function RunLauncher({ project, canRun, reason, runners, onClose,
     return () => { stop = true; clearInterval(t) }
   }, [runId, report, project.projectId, finish])
 
+  const { online } = localState(runners)
+  // Any online machine can claim any queued run — the queue has no affinity — so with
+  // more than one connected the honest answer is a count, not a name.
+  const willRunOn = online.length === 1 ? runnerLabel(online[0], you)
+                  : online.length ? `one of ${online.length} connected local machines`
+                  : ''
   const at = phaseIndex(active)
   const progress = report
     ? runProgress({ totalPassed: report.totalPassed, totalFailed: report.totalFailed,
@@ -201,7 +212,17 @@ export default function RunLauncher({ project, canRun, reason, runners, onClose,
                 {reason || 'No runner is available.'}
               </div>
             )}
-            {canRun && runners === 0 && (
+            {canRun && willRunOn && (
+              /* Said before Start, not discovered afterwards: the single most common
+                 misreading of this screen is that Aura runs the tests in the cloud. */
+              <div style={{ fontSize: 11.5, lineHeight: 1.6,
+                            color: 'var(--color-muted)' }}>
+                This run executes locally on{' '}
+                <strong style={{ color: 'var(--color-text)' }}>{willRunOn}</strong>,
+                not in the cloud.
+              </div>
+            )}
+            {canRun && online.length === 0 && (
               /* `canRun` can be true because THIS backend has podman and a browser —
                  which is the local-development case. But a queued run is claimed by a
                  self-hosted runner, and with none online it simply waits. Saying so
@@ -210,8 +231,8 @@ export default function RunLauncher({ project, canRun, reason, runners, onClose,
                 fontSize: 12.5, lineHeight: 1.6, color: '#f59e0b',
                 background: 'rgba(245,158,11,0.08)',
                 border: '1px solid rgba(245,158,11,0.3)' }}>
-                No runner is connected, so this run will wait in the queue. Start one
-                where podman and Chromium are available:{' '}
+                No local runner is connected, so this run will wait in the queue. Start
+                one where podman and Chromium are available:{' '}
                 <code style={{ fontFamily: 'var(--font-mono)' }}>
                   python -m src.qatest.agent --api … --key gw-…
                 </code>
@@ -323,14 +344,20 @@ export default function RunLauncher({ project, canRun, reason, runners, onClose,
 
             {/* Every event the runner reported, in order — the Floci container
                 being started and answering, the app coming up, each case as it
-                runs. Without it a remote run is one sentence that keeps changing. */}
-            <LiveActivity activity={active?.activity ?? []}
-                          live={!report} maxHeight={200} />
+                runs. Without it a remote run is one sentence that keeps changing.
+                This is the modal a user watches start to finish, so it is where
+                watching the machine work matters most. */}
+            <FlociTerminal
+              activity={active?.activity ?? []}
+              machine={active ? runMachineName(active) : ''}
+              state={active?.emulatorsStale ? 'stalled' : 'live'}
+              maxHeight={200} />
 
             <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
-              {active?.runner
-                ? `Running on ${active.runner}. You can close this — the run continues.`
-                : 'Waiting for a runner to pick it up. You can close this safely.'}
+              {active && runMachineLabel(active, you)
+                ? `Running locally on ${runMachineLabel(active, you)}. You can close `
+                  + `this — the run continues.`
+                : 'Waiting for a local runner to pick it up. You can close this safely.'}
             </span>
           </div>
         )}

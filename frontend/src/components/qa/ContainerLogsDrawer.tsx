@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Copy, Loader2, RefreshCw, X } from 'lucide-react'
+import { Check, Copy, Loader2, RefreshCw, X } from 'lucide-react'
 import { qaApi } from '../../api/qa'
 import type { QaContainerLogs } from '../../api/qa'
 
@@ -11,9 +11,24 @@ import type { QaContainerLogs } from '../../api/qa'
  * it polls — so a log request is left for it and collected on its next poll. That is a
  * round trip of up to ~15 seconds. A control labelled "Stream" that updates every
  * fifteen seconds is worse than an honest one labelled "Fetch".
+ *
+ * `Follow` re-issues that same round trip on a cycle. It is opt-in and it is still not
+ * a stream: the header keeps counting the age of what is on screen, because the reader
+ * has to know they are looking at something up to a poll interval old.
+ *
+ * Dressed as a terminal to match FlociTerminal — the two show output from the same
+ * machine and should look like the same kind of object.
  */
 const POLL_MS = 2000
 const GIVE_UP_MS = 40000
+/** One agent state-report interval plus slack. Asking faster cannot produce newer
+ *  output; it only spends requests. */
+const FOLLOW_MS = 15000
+
+const GROUND = '#0d1117'
+const CHROME = '#161b22'
+const TEXT   = '#e6edf3'
+const DIM    = '#7d8590'
 
 export default function ContainerLogsDrawer({ runner, container, onClose }: {
   runner: string
@@ -23,13 +38,16 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
   const [logs, setLogs] = useState<QaContainerLogs | null>(null)
   const [error, setError] = useState('')
   const [waiting, setWaiting] = useState(true)
+  const [follow, setFollow] = useState(false)
+  const [copied, setCopied] = useState(false)
+  // Re-render once a second so "as of 12s ago" actually counts up between fetches.
+  const [, tick] = useState(0)
   const commandId = useRef('')
   const startedAt = useRef(0)
 
   const fetchLogs = useCallback(async () => {
     setWaiting(true)
     setError('')
-    setLogs(null)
     startedAt.current = Date.now()
     try {
       const { data } = await qaApi.requestLogs(runner, container)
@@ -43,6 +61,11 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
   useEffect(() => { fetchLogs() }, [fetchLogs])
 
   useEffect(() => {
+    const t = setInterval(() => tick(n => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  useEffect(() => {
     if (!waiting || !commandId.current) return
     let stop = false
     const timer = setInterval(async () => {
@@ -51,6 +74,8 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
         const { data } = await qaApi.getLogs(runner, commandId.current)
         if (stop) return
         if (data.status === 'ready' || data.status === 'failed') {
+          // Replaces rather than appends: `podman logs --tail` returns a window, not a
+          // delta, so appending would duplicate every line that is still in the tail.
           setLogs(data)
           setWaiting(false)
           if (data.status === 'failed') setError(data.error || 'The runner could not read that container.')
@@ -68,7 +93,24 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
     return () => { stop = true; clearInterval(timer) }
   }, [waiting, runner])
 
+  // Only ever one request in flight: a new cycle starts from the end of the last one,
+  // so a slow runner cannot accumulate a queue of pending log commands on its row.
+  useEffect(() => {
+    if (!follow || waiting) return
+    const t = setTimeout(fetchLogs, FOLLOW_MS)
+    return () => clearTimeout(t)
+  }, [follow, waiting, fetchLogs, logs])
+
   const text = (logs?.lines || []).join('\n')
+
+  const copy = async () => {
+    try { await navigator.clipboard?.writeText(text); setCopied(true) } catch { /* ignore */ }
+  }
+  useEffect(() => {
+    if (!copied) return
+    const t = setTimeout(() => setCopied(false), 1600)
+    return () => clearTimeout(t)
+  }, [copied])
 
   return (
     <AnimatePresence>
@@ -76,65 +118,87 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
         initial={{ x: 560, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
         exit={{ x: 560, opacity: 0 }} transition={{ type: 'spring', damping: 26 }}
         style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(560px, 92vw)',
-                 background: 'var(--color-surface)', borderLeft: '1px solid var(--color-border)',
+                 background: GROUND, borderLeft: '1px solid #30363d',
                  zIndex: 800, display: 'flex', flexDirection: 'column' }}>
 
-        <header style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 650,
-                            fontFamily: 'var(--font-mono, monospace)',
-                            overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <header style={{ padding: '10px 12px', borderBottom: '1px solid #30363d',
+                         background: CHROME }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span aria-hidden style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+              {['#ff5f57', '#febc2e', '#28c840'].map(c => (
+                <span key={c} style={{ width: 9, height: 9, borderRadius: '50%',
+                                       background: c, opacity: 0.9 }} />
+              ))}
+            </span>
+            <div style={{ minWidth: 0, marginLeft: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: TEXT,
+                            fontFamily: 'var(--font-mono)',
+                            overflow: 'hidden', textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap' }}>
                 {container}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                {/* Deliberately not "live". See the note at the top of this file. */}
+              <div style={{ fontSize: 10.5, color: DIM, marginTop: 2 }}>
+                {/* Deliberately never "live". See the note at the top of this file. */}
                 {waiting ? `asking ${runner}…`
                          : logs?.fetchedAt
-                           ? `podman logs · as of ${new Date(logs.fetchedAt).toLocaleTimeString()}`
+                           ? `podman logs · as of ${ago(logs.fetchedAt)}`
                            : `on ${runner}`}
               </div>
             </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-              <button onClick={fetchLogs} disabled={waiting} style={iconBtn} title="Fetch again">
-                {waiting ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button onClick={() => setFollow(v => !v)}
+                      title={follow
+                        ? `Stop re-fetching (every ${FOLLOW_MS / 1000}s)`
+                        : `Re-fetch every ${FOLLOW_MS / 1000}s — the runner answers on its next poll`}
+                      style={{ ...iconBtn, width: 'auto', padding: '0 9px',
+                               fontSize: 10.5, fontFamily: 'var(--font-mono)',
+                               color: follow ? '#3fb950' : DIM,
+                               borderColor: follow ? '#238636' : '#30363d' }}>
+                Follow
               </button>
-              <button onClick={() => navigator.clipboard?.writeText(text)}
-                      disabled={!text} style={iconBtn} title="Copy all">
-                <Copy size={13} />
+              <button onClick={fetchLogs} disabled={waiting} style={iconBtn}
+                      title="Fetch again">
+                {waiting ? <Loader2 size={13} className="animate-spin" />
+                         : <RefreshCw size={13} />}
+              </button>
+              <button onClick={copy} disabled={!text} style={iconBtn}
+                      title={copied ? 'Copied' : 'Copy all'}>
+                {copied ? <Check size={13} color="#3fb950" /> : <Copy size={13} />}
               </button>
               <button onClick={onClose} style={iconBtn} title="Close"><X size={14} /></button>
             </div>
           </div>
         </header>
 
-        <div style={{ flex: 1, overflow: 'auto', padding: 14 }}>
-          {waiting && (
-            <p style={{ fontSize: 12, color: 'var(--color-text-secondary)',
-                        display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
+          {waiting && !text && (
+            <p style={{ fontSize: 11.5, color: DIM, fontFamily: 'var(--font-mono)',
+                        display: 'flex', gap: 8, alignItems: 'center', margin: 0 }}>
               <Loader2 size={13} className="animate-spin" />
               Waiting for {runner} to answer — it collects requests on its next poll.
             </p>
           )}
           {!!error && (
-            <p style={{ fontSize: 12, color: '#ef4444', lineHeight: 1.6 }}>{error}</p>
+            <p style={{ fontSize: 11.5, color: '#f85149', lineHeight: 1.6,
+                        fontFamily: 'var(--font-mono)' }}>{error}</p>
           )}
           {!waiting && !error && !text && (
-            <p style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+            <p style={{ fontSize: 11.5, color: DIM, fontFamily: 'var(--font-mono)' }}>
               This container has produced no output yet.
             </p>
           )}
           {!!text && (
             <>
               {logs?.truncated && (
-                <p style={{ fontSize: 11, color: '#f59e0b', marginBottom: 8 }}>
+                <p style={{ fontSize: 10.5, color: '#d29922', marginBottom: 8,
+                            fontFamily: 'var(--font-mono)' }}>
                   Truncated — showing the most recent output.
                 </p>
               )}
-              <pre style={{ margin: 0, fontSize: 11, lineHeight: 1.6,
-                            fontFamily: 'var(--font-mono, monospace)',
-                            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                            color: 'var(--color-text)' }}>
+              <pre style={{ margin: 0, fontSize: 11.5, lineHeight: 1.65,
+                            fontFamily: 'var(--font-mono)',
+                            whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+                            userSelect: 'text', color: TEXT }}>
                 {text}
               </pre>
             </>
@@ -145,9 +209,17 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
   )
 }
 
+/** How old what is on screen actually is. The whole honesty of this panel rests on it. */
+function ago(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return 'just now'
+  const s = Math.floor(ms / 1000)
+  if (s < 5) return 'just now'
+  return s < 60 ? `${s}s ago` : `${Math.floor(s / 60)}m ago`
+}
+
 const iconBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  width: 28, height: 28, borderRadius: 6, cursor: 'pointer',
-  border: '1px solid var(--color-border)', background: 'transparent',
-  color: 'var(--color-text)',
+  width: 28, height: 26, borderRadius: 6, cursor: 'pointer',
+  border: '1px solid #30363d', background: 'transparent', color: DIM,
 }

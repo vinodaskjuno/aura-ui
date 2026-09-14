@@ -5,7 +5,10 @@
 :root {
   --font-heading: 'Montserrat', system-ui, sans-serif;
   --font-body:    'Inter', system-ui, sans-serif;
-  --font-mono:    'JetBrains Mono', monospace;
+  /* A real stack, not a bare `monospace`: the webfont loads asynchronously and the
+     first paint is whatever comes next in this list. */
+  --font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas,
+                  'DejaVu Sans Mono', monospace;
 
   /* ── Type scale ───────────────────────────────────────────────────────────
      Sizes were previously chosen inline per component — 28/26/24/22/20/16/
@@ -276,6 +279,23 @@ code,pre,.mono { font-family: var(--font-mono); }
   0%   { box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
   70%  { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
   100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+}
+
+/* ── The Floci terminal ──────────────────────────────────────────────────────
+   A console showing work happening on someone's actual machine. Deliberately dark in
+   BOTH themes: a light-theme terminal reads as a code block, not a console. */
+.floci-cursor {
+  display: inline-block; width: 7px; height: 13px; margin-left: 2px;
+  vertical-align: text-bottom; background: #58a6ff;
+  animation: floci-blink 1.1s steps(2, start) infinite;
+}
+@keyframes floci-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* Honour the setting rather than dropping the cursor: a static block still marks
+   where output will land. */
+@media (prefers-reduced-motion: reduce) {
+  .floci-cursor { animation: none; }
+  .pulse-dot    { animation: none; }
 }
 
 .skeleton {

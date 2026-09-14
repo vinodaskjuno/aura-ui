@@ -37,8 +37,8 @@ export default function FlociContainerTable({ rows, onLogs, showRunner = false }
     return (
       <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '10px 0',
                   lineHeight: 1.6 }}>
-        No Floci containers are running. QualityMind starts one per cloud your project
-        depends on, only for the duration of a run.
+        No Floci containers are running locally. QualityMind starts one per cloud your
+        project depends on, only for the duration of a run.
       </p>
     )
   }
@@ -116,10 +116,12 @@ export default function FlociContainerTable({ rows, onLogs, showRunner = false }
 }
 
 /** The same table, scoped to one run, fed from its heartbeat rather than podman. */
-export function RunEmulators({ emulators, stale }: {
+export function RunEmulators({ emulators, stale, onLogs }: {
   emulators: { cloud: string; port?: number; container?: string; image?: string
                started?: boolean; stopped?: boolean; error?: string }[]
   stale?: boolean
+  /** Absent means no logs control — the caller has no runner to ask. */
+  onLogs?: (container: string) => void
 }) {
   if (!emulators.length) return null
   return (
@@ -149,6 +151,13 @@ export function RunEmulators({ emulators, stale }: {
                          color: e.error ? '#ef4444' : 'var(--color-text-secondary)' }}>
             {e.stopped ? 'stopped' : e.started ? 'ready' : e.error ? e.error.slice(0, 90) : 'starting…'}
           </span>
+          {/* Reachable from the run itself. It used to exist only in the Runner tab,
+              which is not where anyone is looking while a run is in flight. */}
+          {onLogs && e.container && !e.stopped && (
+            <button onClick={() => onLogs(e.container!)} style={linkBtn}>
+              <FileText size={11} /> Logs
+            </button>
+          )}
         </div>
       ))}
     </div>

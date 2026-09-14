@@ -565,12 +565,9 @@ export default function QAWorkspacePage() {
 
   /** Floci containers for a run that is still executing, from its heartbeat. A
    *  finished run has none — its emulators are in the stored report instead. */
-  const liveFor = (runId: string) => {
-    const run = active.find(r => r.runId === runId)
-    return run?.emulators?.length
-      ? { emulators: run.emulators, stale: !!run.emulatorsStale }
-      : null
-  }
+  // The whole run, not just its emulators: RunDetail also shows the machine's console,
+  // and threading one field at a time meant a prop change for every new thing it says.
+  const liveFor = (runId: string) => active.find(r => r.runId === runId) ?? null
 
   /** Stop a run that is queued or wedged.
    *
@@ -666,6 +663,7 @@ export default function QAWorkspacePage() {
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <RunnerStatusChip runners={runnersState.runners}
+                                  you={runnersState.you}
                                   onClick={() => setTab('runner')} />
                 <button
                   className="ov-btn ov-btn-ghost"
@@ -709,6 +707,7 @@ export default function QAWorkspacePage() {
                     onBack={() => setOpenRunId(null)}
                     onRerun={rerun}
                     live={liveFor(openRunId)}
+                    you={runnersState.you}
                   />
                 ) : (
                   <>
@@ -719,6 +718,8 @@ export default function QAWorkspacePage() {
                       <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
                         {active.map(run => (
                           <RunProgress key={run.runId} run={run}
+                                       runners={runnersState.runners}
+                                       you={runnersState.you}
                                        onCancel={cancelRun} />
                         ))}
                       </div>
@@ -824,7 +825,8 @@ export default function QAWorkspacePage() {
             project={launchProject}
             canRun={caps?.canRun ?? false}
             reason={caps?.reason ?? ''}
-            runners={caps?.runners?.length ?? 0}
+            runners={runnersState.runners}
+            you={runnersState.you}
             onClose={() => setLaunchProject(null)}
             onFinished={() => {
               if (selectedProject) loadSuites(selectedProject.projectId as string)

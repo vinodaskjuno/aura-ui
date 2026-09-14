@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import {
   Boxes, Camera, CheckCircle2, Clock, Cloud, Loader2, PlayCircle, Rocket, XCircle,
 } from 'lucide-react'
-import type { QaActiveRun } from '../../api/qa'
+import type { QaActiveRun, QaRunner } from '../../api/qa'
 import ProgressBar from './ProgressBar'
 import { RunEmulators } from './FlociContainerTable'
-import LiveActivity from './LiveActivity'
+import FlociTerminal from './FlociTerminal'
+import ContainerLogsDrawer from './ContainerLogsDrawer'
+import { runMachineLabel, runMachineName } from './useQaRunners'
 import { runProgress } from './progress' 
 
 /**
@@ -61,12 +63,17 @@ function elapsed(from: string): string {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
-export default function RunProgress({ run, onCancel }: {
+export default function RunProgress({ run, runners = [], you, onCancel }: {
   run: QaActiveRun
+  /** Only to look up the OS of the machine this run is on. Never to decide WHERE it
+   *  runs — that is stamped on the run itself and outlives the machine. */
+  runners?: QaRunner[]
+  you?: string
   /** Absent means no cancel control. */
   onCancel?: (runId: string) => void
 }) {
   const [cancelling, setCancelling] = useState(false)
+  const [logsFor, setLogsFor] = useState('')
   // Re-render once a second so the elapsed clock moves between polls. Without it the
   // whole panel is frozen for five seconds at a time and reads as stalled.
   const [, tick] = useState(0)
@@ -78,6 +85,10 @@ export default function RunProgress({ run, onCancel }: {
   const at = phaseIndex(run)
   const progress = runProgress(run)
   const failing = (run.totalFailed ?? 0) > 0
+  const where = runMachineLabel(run, you)     // prose: names the owner too
+  const machine = runMachineName(run)         // chrome: the bare machine name
+  // Reported by the machine itself. Omitted rather than guessed when it is not online.
+  const os = runners.find(r => r.name === run.runner)?.os
 
   return (
     <div className="ov-card" style={{ display: 'flex', flexDirection: 'column', gap: 12,
@@ -110,9 +121,10 @@ export default function RunProgress({ run, onCancel }: {
           </button>
         )}
         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-muted)' }}>
-          {run.runner
-            ? `on ${run.runner}`
-            : 'waiting for a runner to pick it up'}
+          {where
+            ? `executing locally on ${where}`
+            : 'waiting for a local runner to pick it up'}
+          {where && os ? ` · ${os}` : ''}
           {run.createdAt && ` · ${elapsed(run.createdAt)}`}
         </span>
       </div>
@@ -176,14 +188,30 @@ export default function RunProgress({ run, onCancel }: {
         </span>
       )}
 
-      {/* The Floci containers serving this run, live from its heartbeat. */}
+      {/* The Floci containers serving this run, live from its heartbeat. Headed, so
+          the rows are visibly attributed to a machine rather than floating. */}
       {!!run.emulators?.length && (
-        <RunEmulators emulators={run.emulators} stale={run.emulatorsStale} />
+        <div style={{ display: 'grid', gap: 6 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em',
+                         textTransform: 'uppercase', color: 'var(--color-muted)' }}>
+            Floci{machine ? ` on ${machine}` : ''}
+          </span>
+          <RunEmulators emulators={run.emulators} stale={run.emulatorsStale}
+                        onLogs={run.runner ? setLogsFor : undefined} />
+        </div>
       )}
 
-      {/* And what it is actually doing, line by line. */}
-      {!!run.activity?.length && (
-        <LiveActivity activity={run.activity} maxHeight={160} />
+      {/* And what it is actually doing, line by line, as the machine does it. */}
+      <FlociTerminal
+        activity={run.activity ?? []}
+        machine={machine}
+        state={run.emulatorsStale || (run.updatedAt && stale(run.updatedAt))
+          ? 'stalled' : 'live'}
+        maxHeight={180} />
+
+      {logsFor && run.runner && (
+        <ContainerLogsDrawer runner={run.runner} container={logsFor}
+                             onClose={() => setLogsFor('')} />
       )}
     </div>
   )

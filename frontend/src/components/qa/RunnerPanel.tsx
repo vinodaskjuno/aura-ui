@@ -267,11 +267,11 @@ function NoRunner({ caps }: { caps: QaCapabilities | null }) {
   return (
     <div style={{ border: '1px dashed var(--color-border)', borderRadius: 8, padding: 16 }}>
       <p style={{ fontSize: 13, fontWeight: 600, margin: '0 0 6px' }}>
-        No runner is connected.
+        No local runner is connected.
       </p>
       <p style={{ ...muted, lineHeight: 1.7, margin: '0 0 12px' }}>
-        Tests execute on a machine with podman and Chromium — this backend has neither,
-        and cannot. Start a runner and it will appear here within a few seconds.
+        Tests execute locally, on a machine with podman and Chromium — this backend has
+        neither, and cannot. Start a runner and it will appear here within a few seconds.
       </p>
       {commands.map(command => <CommandLine key={command} command={command} />)}
     </div>

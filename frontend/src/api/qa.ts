@@ -154,6 +154,10 @@ export interface QaActiveRun {
   status:    'queued' | 'claimed' | 'running' | string
   phase:     string
   runner:    string
+  /** The machine this run is executing on, as its operator names it — stamped on the
+   *  run when it was claimed, so it outlives the machine going offline. */
+  runnerMachine?: string
+  runnerOwner?:   string
   appUrl:    string
   createdAt: string
   updatedAt: string
@@ -271,6 +275,13 @@ export interface QaRunner {
   podmanVersion?: string
   browserVersion?: string
   os?:            string
+  /** Who this machine belongs to, derived by the API from the gateway key — never
+   *  self-reported. Absent until an upgraded runner's first poll. */
+  owner?:         string
+  ownerId?:       string
+  /** What its operator calls it. Absent from a runner that predates this, in which
+   *  case every reader falls back to `name`. */
+  machine?:       string
   busyRunId?:     string
   protocol:       number
   /** Protocol 1 agents never report state, so an empty container list from one means
@@ -374,6 +385,9 @@ export const qaApi = {
   // ── The machine doing the work ───────────────────────────────────────────
   runners: () =>
     client.get<{ runners: QaRunner[]; staleAfterSeconds: number
+                 /** The viewer's own username, so ownership is decided from one
+                  *  server-stated fact rather than inferred in the browser. */
+                 you?: string
                  clouds: { name: string; port: number; image: string }[] }>(
       '/api/qa/runners'),
   /** Ask a runner for a container's output. Answered on its NEXT poll — this is a

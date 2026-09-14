@@ -21,6 +21,9 @@ const IDLE_MS = 30000    // idle, elsewhere — the header chip only needs to be
 
 export interface RunnersState {
   runners:     QaRunner[]
+  /** The viewer's own username, as the server states it. Empty from a backend that
+   *  predates it, which simply means nothing is labelled "your machine". */
+  you:         string
   loading:     boolean
   error:       string
   lastUpdated: number
@@ -34,6 +37,7 @@ export function useQaRunners({ active, watching }: {
   watching: boolean
 }): RunnersState {
   const [runners, setRunners] = useState<QaRunner[]>([])
+  const [you, setYou] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lastUpdated, setLastUpdated] = useState(0)
@@ -54,6 +58,7 @@ export function useQaRunners({ active, watching }: {
       // stale response overwriting a newer one.
       if (!alive.current || ctrl.signal.aborted) return
       setRunners(data.runners || [])
+      setYou(data.you || '')
       setError('')
       setLastUpdated(Date.now())
     } catch (e: any) {
@@ -89,7 +94,65 @@ export function useQaRunners({ active, watching }: {
     return () => { stop(); document.removeEventListener('visibilitychange', onVisibility) }
   }, [active, watching, load])
 
-  return { runners, loading, error, lastUpdated, refresh: load }
+  return { runners, you, loading, error, lastUpdated, refresh: load }
+}
+
+/**
+ * What to call a machine on screen.
+ *
+ * `name` is the identity the server assigns — `username/qa-runner` — which is not what
+ * anyone calls their laptop. The machine name is what its operator typed, and is absent
+ * from a runner that predates it, so this falls back rather than showing nothing.
+ *
+ * This is the ONE place the "your machine" wording is decided. Four surfaces render it.
+ */
+export function runnerLabel(runner: QaRunner, you?: string): string {
+  const machine = runner.machine || runner.name
+  if (runner.owner && you && runner.owner === you) return `${machine} (your machine)`
+  return runner.owner ? `${machine} (${runner.owner})` : machine
+}
+
+/**
+ * Just the machine a run is on, with no ownership suffix.
+ *
+ * Chrome — a terminal title bar, a one-word heading — wants the bare name; prose is
+ * where "(your machine)" belongs. Saying it in both makes the chrome long and reads as
+ * a stutter.
+ */
+export function runMachineName(
+  run: { runner?: string; runnerMachine?: string },
+): string {
+  return run.runnerMachine || run.runner || ''
+}
+
+/** The machine a run is executing on, named the same way, with who owns it. */
+export function runMachineLabel(
+  run: { runner?: string; runnerMachine?: string; runnerOwner?: string },
+  you?: string,
+): string {
+  const machine = run.runnerMachine || run.runner || ''
+  if (!machine) return ''
+  if (run.runnerOwner && you && run.runnerOwner === you) return `${machine} (your machine)`
+  return run.runnerOwner ? `${machine} (${run.runnerOwner})` : machine
+}
+
+/**
+ * Is anything running locally, right now.
+ *
+ * `busy` is the distinction the header chip could not previously draw: it rendered
+ * identically whether a podman container was live on someone's desk or the machine had
+ * been idle all afternoon.
+ */
+export function localState(runners: QaRunner[]) {
+  const online = runners.filter(r => r.online)
+  return {
+    online,
+    connected:  online.length > 0,
+    busy:       online.filter(r => r.busyRunId),
+    containers: online.reduce((n, r) => n + (r.containers?.length || 0), 0),
+    unhealthy:  online.some(r => r.health && !r.health.ok),
+    settingUp:  online.filter(r => r.setup?.active),
+  }
 }
 
 /** Every container across every runner, with the runner it belongs to. */
