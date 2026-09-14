@@ -26,6 +26,9 @@ const OUTCOME: Record<CaseOutcome, { label: string; colour: string; icon: React.
 const KIND_COLOUR: Record<CaseKind, string> = {
   ui: '#4f8ef7', api: '#10b981', smoke: '#8b5cf6', structure: '#f59e0b',
   stack: '#06b6d4',
+  // Rose, and deliberately unlike the pass/fail palette: a policy case is a control,
+  // not a test of the application, and the colour should not imply otherwise.
+  policy: '#f43f5e',
 }
 
 type Filter = 'all' | 'failed' | 'not-run' | CaseKind

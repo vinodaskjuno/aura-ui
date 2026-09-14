@@ -13,6 +13,7 @@ import ContextSummaryDialog from '../components/dev-chat/ContextSummaryDialog'
 import TokenMetricsBadge from '../components/dev-chat/TokenMetricsBadge'
 import ProjectsPanel, { type WizardResult } from '../components/dev-chat/ProjectsPanel'
 import FlociControl from '../components/dev-chat/FlociControl'
+import PolicyPanel from '../components/dev-chat/PolicyPanel'
 import { useQaRunners } from '../components/qa/useQaRunners'
 import CreateProjectWizard, { type WizardInitialValues } from '../components/dev-chat/CreateProjectWizard'
 import MetricsDashboard from '../components/dev-chat/MetricsDashboard'
@@ -1208,10 +1209,11 @@ export default function DevChatbotPage() {
             down. Hidden entirely unless this viewer owns a connected runner: "start a
             container" has to mean a machine they can see. */}
         {selectedProject?.id && (
-          <div style={{ marginTop: 10, flexShrink: 0 }}>
+          <div style={{ marginTop: 10, flexShrink: 0, display: 'grid', gap: 8 }}>
             <FlociControl projectId={selectedProject.id}
                           runners={runnersState.runners}
                           you={runnersState.you} />
+            <PolicyPanel projectId={selectedProject.id} />
           </div>
         )}
 

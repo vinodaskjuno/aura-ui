@@ -187,7 +187,7 @@ export interface QaActiveRun {
   emulatorsStale?: boolean
 }
 
-export type CaseKind = 'ui' | 'api' | 'smoke' | 'structure' | 'stack'
+export type CaseKind = 'ui' | 'api' | 'smoke' | 'structure' | 'stack' | 'policy'
 
 /** One line of a run's console: when, which phase, and what happened. */
 export interface RunActivity {
@@ -394,6 +394,28 @@ export interface QaEmulatorInventory {
   requestedAt?: string
 }
 
+/** One NIST control evaluated against the project's IaC. */
+export interface QaPolicyControl {
+  id:      string
+  name:    string
+  file:    string
+  control: string
+  passed:  boolean
+  /** What was checked — and, on a pass, what was NOT. These read declared intent, so
+   *  the message says so rather than implying a deployed resource was inspected. */
+  detail:  string
+}
+
+export interface QaPolicy {
+  /** False when the project ships no IaC. Distinct from "everything passed": a project
+   *  nobody assessed and a clean one are different facts. */
+  applicable: boolean
+  controls:   QaPolicyControl[]
+  passed:     number
+  total:      number
+  reason?:    string
+}
+
 export interface TestArtifact {
   key: string
   url: string
@@ -450,6 +472,10 @@ export const qaApi = {
   controlEmulators: (projectId: string, action: 'start' | 'stop', runner: string) =>
     client.post<{ commandId: string; status: string; clouds: string[] }>(
       `/api/qa/emulators/${projectId}/${action}`, { runner }),
+  /** NIST controls over the project's IaC. Answered by the API from the working copy —
+   *  no runner, no podman, no round trip. */
+  projectPolicy: (projectId: string) =>
+    client.get<QaPolicy>(`/api/qa/projects/${projectId}/policy`),
   runners: () =>
     client.get<{ runners: QaRunner[]; staleAfterSeconds: number
                  /** The viewer's own username, so ownership is decided from one
@@ -519,6 +545,9 @@ export const CASE_KINDS: { id: CaseKind; label: string; desc: string; color: str
     desc: 'One per Service node — recorded as skipped, since a Service has no address' },
   { id: 'structure', label: 'File checks', color: '#f59e0b',
     desc: 'Validates the files themselves — needs no running application' },
+  { id: 'policy', label: 'Policy', color: '#f43f5e',
+    desc: 'NIST controls over the project\'s infrastructure-as-code — reads the '
+        + 'template, needs no app and no emulator' },
   { id: 'stack', label: 'Running stack', color: '#06b6d4',
     desc: 'Starts the project\'s compose stack and asks what only it can answer' },
 ]
