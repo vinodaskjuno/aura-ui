@@ -344,6 +344,23 @@ export interface QaContainerLogs {
   requestedAt?: string
 }
 
+/** What a run spent on model calls. Zero today, by design — see `runCost`. */
+export interface QaRunCost {
+  runId:      string
+  projectId:  string
+  /** Model calls made during the run. 0 means none were made, which is not the same
+   *  as $0.00 of measured spend. */
+  calls:      number
+  inputTokens:          number
+  outputTokens:         number
+  cacheReadTokens:      number
+  cacheCreationTokens:  number
+  totalTokens: number
+  costUsd:     number
+  byModel: { model: string; calls: number; cost: number
+             inputTokens: number; outputTokens: number }[]
+}
+
 export interface TestArtifact {
   key: string
   url: string
@@ -383,11 +400,20 @@ export const qaApi = {
     client.get(`/api/qa/runs/${runId}/progress`, { params: { projectId } }),
 
   // ── The machine doing the work ───────────────────────────────────────────
+  /** What a run spent on model calls. 503 when this deployment's token-usage table
+   *  predates the projectId index — an absence, deliberately not reported as zero. */
+  runCost: (runId: string, projectId: string) =>
+    client.get<QaRunCost>(`/api/qa/runs/${runId}/cost`, { params: { projectId } }),
   runners: () =>
     client.get<{ runners: QaRunner[]; staleAfterSeconds: number
                  /** The viewer's own username, so ownership is decided from one
                   *  server-stated fact rather than inferred in the browser. */
                  you?: string
+                 /** Present when a poll was REFUSED recently. A rejected poll is
+                  *  anonymous, so it can never appear as a runner — without this,
+                  *  "nobody started an agent" and "an agent is running and its key is
+                  *  being refused" render identically. */
+                 unauthorized?: { at: string; hint?: string }
                  clouds: { name: string; port: number; image: string }[] }>(
       '/api/qa/runners'),
   /** Ask a runner for a container's output. Answered on its NEXT poll — this is a

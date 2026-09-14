@@ -763,6 +763,7 @@ export default function QAWorkspacePage() {
                   loading={runnersState.loading}
                   error={runnersState.error}
                   lastUpdated={runnersState.lastUpdated}
+                  unauthorized={runnersState.unauthorized}
                   onRefresh={runnersState.refresh}
                 />
               )}

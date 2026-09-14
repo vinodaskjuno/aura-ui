@@ -92,6 +92,7 @@ export default function RunLauncher({ project, canRun, reason, runners, you, onC
   const [steps, setSteps] = useState<RunStep[]>([])
   const [error, setError] = useState('')
   const [starting, setStarting] = useState(false)
+  const [blocked, setBlocked] = useState(false)
   const [zoom, setZoom] = useState<RunStep | null>(null)
   const [kinds, setKinds] = useState<CaseKind[]>([])
   const [plan, setPlan] = useState<QaPlanPreview | null>(null)
@@ -113,8 +114,12 @@ export default function RunLauncher({ project, canRun, reason, runners, you, onC
       setRunId(data.runId)
       startedAt.current = Date.now()
     } catch (e: unknown) {
-      setError((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        || 'Could not queue the run.')
+      const err = e as { response?: { status?: number; data?: { detail?: string } } }
+      // 409 is the server refusing a run it knows cannot succeed — there is no working
+      // copy to test. Its detail names the paths it looked in, so it is shown whole
+      // rather than collapsed into a generic failure.
+      setError(err?.response?.data?.detail || 'Could not queue the run.')
+      setBlocked(err?.response?.status === 409)
     } finally { setStarting(false) }
   }
 
@@ -257,7 +262,19 @@ export default function RunLauncher({ project, canRun, reason, runners, you, onC
                 ? 'Tests will run against that URL, which must already be serving.'
                 : 'Aura ships its own copy of the code to the runner, installs the dependencies, starts the API and UI, then tests them.'}
             </span>
-            {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
+            {error && (
+              /* A refused run gets room to explain itself: the message lists every path
+                 that was checked and the two ways to fix it, and squeezing that onto one
+                 red line is how it went unread. */
+              <div style={{ fontSize: 12, lineHeight: 1.7, whiteSpace: 'pre-line',
+                            color: blocked ? '#f59e0b' : '#ef4444',
+                            ...(blocked ? { padding: '10px 12px', borderRadius: 8,
+                                            background: 'rgba(245,158,11,0.08)',
+                                            border: '1px solid rgba(245,158,11,0.3)' }
+                                        : {}) }}>
+                {error}
+              </div>
+            )}
             <button type="button" className="ov-btn ov-btn-primary"
               disabled={!canRun || starting} onClick={start}
               style={{ justifyContent: 'center', gap: 7, padding: '10px',

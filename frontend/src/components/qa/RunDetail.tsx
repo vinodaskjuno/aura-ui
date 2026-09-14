@@ -14,6 +14,7 @@ import StepTimeline from './StepTimeline'
 import ArtifactViewer from './ArtifactViewer'
 import { RunEmulators } from './FlociContainerTable'
 import FlociTerminal from './FlociTerminal'
+import RunCost from './RunCost'
 import { runMachineLabel, runMachineName } from './useQaRunners'
 import { executionRate, hasCoverage } from './progress'
 
@@ -185,6 +186,10 @@ export default function RunDetail({ projectId, runId, status, onBack, onRerun, l
 
           <Section title="Cloud emulators">
             <EmulatorTable emulators={report.emulators || []} />
+          </Section>
+
+          <Section title="Model cost">
+            <RunCost projectId={projectId} runId={runId} />
           </Section>
 
           <Section title="Console">

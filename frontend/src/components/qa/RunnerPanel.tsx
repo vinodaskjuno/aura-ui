@@ -30,12 +30,16 @@ import { allContainers } from './useQaRunners'
  * table with dead Logs buttons tells the reader less than one honest sentence and the
  * command that fixes it.
  */
-export default function RunnerPanel({ runners, caps, loading, error, lastUpdated, onRefresh }: {
+export default function RunnerPanel({ runners, caps, loading, error, lastUpdated,
+                                     unauthorized, onRefresh }: {
   runners: QaRunner[]
   caps: QaCapabilities | null
   loading: boolean
   error: string
   lastUpdated: number
+  /** A poll the server REFUSED, recently. Never a runner — a rejected poll carries no
+   *  identity — but the reason the list below may be empty. */
+  unauthorized?: { at: string; hint?: string } | null
   onRefresh: () => void
 }) {
   const [logsFor, setLogsFor] = useState<Row | null>(null)
@@ -50,6 +54,11 @@ export default function RunnerPanel({ runners, caps, loading, error, lastUpdated
           <p style={muted}><Loader2 size={12} className="animate-spin" /> Looking for runners…</p>
         )}
         {!!error && <p style={{ ...muted, color: '#ef4444' }}>{error}</p>}
+
+        {/* Shown ABOVE the list, and whether or not the list is empty: a refused key
+            explains a missing runner, and with two machines it explains why only one
+            of them is here. */}
+        {unauthorized && <RejectedKey seen={unauthorized} />}
 
         {!loading && !runners.length && !error && <NoRunner caps={caps} />}
 
@@ -252,6 +261,36 @@ function Capability({ state, icon, label }: {
        : state === 'bad' ? <XCircle size={11} color="#f59e0b" />
        : <HelpCircle size={11} />}
     </span>
+  )
+}
+
+/**
+ * A runner IS running — it just cannot authenticate.
+ *
+ * This is the single most expensive thing this panel could not say. A rotated key left
+ * an agent polling dev every five seconds for four days; every poll was refused, so no
+ * runner row was ever written, so the panel said "no runner is connected" — which is
+ * true, useless, and points at the wrong problem entirely.
+ */
+function RejectedKey({ seen }: { seen: { at: string; hint?: string } }) {
+  return (
+    <div style={{ border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8,
+                  background: 'rgba(239,68,68,0.06)', padding: '12px 14px',
+                  marginBottom: 12 }}>
+      <p style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '0 0 6px',
+                  fontSize: 13, fontWeight: 650, color: '#ef4444' }}>
+        <AlertTriangle size={13} />
+        A runner is connecting, but its API key is being rejected
+      </p>
+      <p style={{ ...muted, display: 'block', lineHeight: 1.7, margin: '0 0 10px' }}>
+        Last refused {seen.at ? new Date(seen.at).toLocaleTimeString() : 'just now'}
+        {seen.hint ? <> — the key ended <code>…{seen.hint}</code>.</> : '.'}{' '}
+        The key was most likely rotated or revoked. A running agent cannot pick up a new
+        one, so it has to be restarted with a fresh key — until then it will keep polling
+        and keep being refused.
+      </p>
+      <CommandLine command="python -m src.qatest.agent --doctor --api <this-host> --key gw-…" />
+    </div>
   )
 }
 

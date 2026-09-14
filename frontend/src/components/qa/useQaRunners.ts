@@ -24,6 +24,9 @@ export interface RunnersState {
   /** The viewer's own username, as the server states it. Empty from a backend that
    *  predates it, which simply means nothing is labelled "your machine". */
   you:         string
+  /** Set when the server refused a runner's key recently. This is what turns an empty
+   *  runner list from a mystery into a diagnosis. */
+  unauthorized: { at: string; hint?: string } | null
   loading:     boolean
   error:       string
   lastUpdated: number
@@ -38,6 +41,8 @@ export function useQaRunners({ active, watching }: {
 }): RunnersState {
   const [runners, setRunners] = useState<QaRunner[]>([])
   const [you, setYou] = useState('')
+  const [unauthorized, setUnauthorized] =
+    useState<{ at: string; hint?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lastUpdated, setLastUpdated] = useState(0)
@@ -59,6 +64,9 @@ export function useQaRunners({ active, watching }: {
       if (!alive.current || ctrl.signal.aborted) return
       setRunners(data.runners || [])
       setYou(data.you || '')
+      // `{}` from the server means "no recent rejection" — normalise it away so the UI
+      // only has to test for truthiness.
+      setUnauthorized(data.unauthorized?.at ? data.unauthorized : null)
       setError('')
       setLastUpdated(Date.now())
     } catch (e: any) {
@@ -94,7 +102,7 @@ export function useQaRunners({ active, watching }: {
     return () => { stop(); document.removeEventListener('visibilitychange', onVisibility) }
   }, [active, watching, load])
 
-  return { runners, you, loading, error, lastUpdated, refresh: load }
+  return { runners, you, unauthorized, loading, error, lastUpdated, refresh: load }
 }
 
 /**
