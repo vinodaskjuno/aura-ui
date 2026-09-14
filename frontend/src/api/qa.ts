@@ -82,6 +82,9 @@ export interface EmulatorRecord {
   container: string
   started:   boolean
   error:     string
+  /** It was already running when the run began — started by `floci-cli` or from
+   *  DevMate — so this run adopted it and left it alone at the end. */
+  adopted?:  boolean
 }
 
 export interface RunCase {
@@ -122,6 +125,9 @@ export interface RunReport {
   planTotal?:      number
   coverage?:       QaCoverage
   exploratory:     boolean
+  /** What was inside the emulators when the run finished. Absent from every report
+   *  written before this existed, which is not the same as an empty emulator. */
+  resources?:      QaResources
 }
 
 /**
@@ -282,6 +288,10 @@ export interface QaRunner {
   /** What its operator calls it. Absent from a runner that predates this, in which
    *  case every reader falls back to `name`. */
   machine?:       string
+  /** Floci's own dashboard, if the operator is running it. Reported BY the runner —
+   *  the browser cannot probe localhost from an HTTPS page without tripping
+   *  mixed-content, and the runner is already on the machine. */
+  flociUi?:       { running: boolean; port?: number }
   busyRunId?:     string
   protocol:       number
   /** Protocol 1 agents never report state, so an empty container list from one means
@@ -344,6 +354,18 @@ export interface QaContainerLogs {
   requestedAt?: string
 }
 
+/** One emulated cloud resource. `count` is absent where the notion does not apply (an
+ *  SNS topic has no items), and -1 means the listing was capped — rendered "50+" rather
+ *  than a number that would understate it. */
+export interface QaResource {
+  name:   string
+  count?: number
+  items?: string[]
+}
+
+/** {cloud: {service: resources}} — what was inside the emulators. */
+export type QaResources = Record<string, Record<string, QaResource[]>>
+
 /** What a run spent on model calls. Zero today, by design — see `runCost`. */
 export interface QaRunCost {
   runId:      string
@@ -359,6 +381,17 @@ export interface QaRunCost {
   costUsd:     number
   byModel: { model: string; calls: number; cost: number
              inputTokens: number; outputTokens: number }[]
+}
+
+/** A live read of one emulator, from the runner. Up to one poll interval old — the
+ *  drawer says so rather than calling itself live. */
+export interface QaEmulatorInventory {
+  status:     'pending' | 'ready' | 'failed'
+  cloud:      string
+  resources?: QaResources
+  fetchedAt?: string
+  error?:     string
+  requestedAt?: string
 }
 
 export interface TestArtifact {
@@ -404,6 +437,19 @@ export const qaApi = {
    *  predates the projectId index — an absence, deliberately not reported as zero. */
   runCost: (runId: string, projectId: string) =>
     client.get<QaRunCost>(`/api/qa/runs/${runId}/cost`, { params: { projectId } }),
+  /** Ask a runner what is in one of its live emulators. Answered on its NEXT poll —
+   *  a round trip, not a stream. */
+  requestInventory: (runner: string, cloud: string) =>
+    client.post<{ commandId: string; status: string }>(
+      '/api/qa/runners/inventory', { runner, cloud }),
+  getInventory: (runner: string, commandId: string) =>
+    client.get<QaEmulatorInventory>(`/api/qa/runners/inventory/${commandId}`,
+                                    { params: { runner } }),
+  /** Start or stop a project's own emulators, from DevMate. The clouds are derived
+   *  server-side from the project's dependencies. */
+  controlEmulators: (projectId: string, action: 'start' | 'stop', runner: string) =>
+    client.post<{ commandId: string; status: string; clouds: string[] }>(
+      `/api/qa/emulators/${projectId}/${action}`, { runner }),
   runners: () =>
     client.get<{ runners: QaRunner[]; staleAfterSeconds: number
                  /** The viewer's own username, so ownership is decided from one

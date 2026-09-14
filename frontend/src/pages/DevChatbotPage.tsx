@@ -12,6 +12,8 @@ import ModelSelector, { getModelById, type ModelOption } from '../components/dev
 import ContextSummaryDialog from '../components/dev-chat/ContextSummaryDialog'
 import TokenMetricsBadge from '../components/dev-chat/TokenMetricsBadge'
 import ProjectsPanel, { type WizardResult } from '../components/dev-chat/ProjectsPanel'
+import FlociControl from '../components/dev-chat/FlociControl'
+import { useQaRunners } from '../components/qa/useQaRunners'
 import CreateProjectWizard, { type WizardInitialValues } from '../components/dev-chat/CreateProjectWizard'
 import MetricsDashboard from '../components/dev-chat/MetricsDashboard'
 import { type Project, projectsApi } from '../api/projects'
@@ -322,6 +324,10 @@ export default function DevChatbotPage() {
   // Project selection state
   const [query, setQuery] = useState('')
   const [selectedProject, setSelectedProject] = useState<SearchResult | null>(null)
+  // Shared with QualityMind: one poll owner, and the only place that knows which
+  // machine belongs to this viewer. `watching` keeps the cadence sane while a project
+  // is open without pretending a run is in flight.
+  const runnersState = useQaRunners({ active: false, watching: !!selectedProject })
 
   // Wizard
   const [showWizard, setShowWizard] = useState(false)
@@ -900,6 +906,7 @@ export default function DevChatbotPage() {
               onDelete={setDoomed}
               onSelect={(projectId, name) => handlePanelProjectSelect({ projectId, name })}
             />
+
           </div>
         ) : null}
 
@@ -1194,6 +1201,19 @@ export default function DevChatbotPage() {
             </button>
           </div>
         </div>
+
+        {/* The emulators this project's code implies. Started and stopped by the
+            developer rather than by a test run, so they can be worked against for as
+            long as they are wanted — and so a run adopts them instead of tearing them
+            down. Hidden entirely unless this viewer owns a connected runner: "start a
+            container" has to mean a machine they can see. */}
+        {selectedProject?.id && (
+          <div style={{ marginTop: 10, flexShrink: 0 }}>
+            <FlociControl projectId={selectedProject.id}
+                          runners={runnersState.runners}
+                          you={runnersState.you} />
+          </div>
+        )}
 
         {/* Tier-switch banner */}
         {tierSwitchBanner && (

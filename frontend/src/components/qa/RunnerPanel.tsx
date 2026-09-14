@@ -17,6 +17,7 @@ function capState(runner: QaRunner, flag: boolean): 'ok' | 'bad' | 'unknown' {
 }
 import FlociContainerTable, { type Row } from './FlociContainerTable'
 import ContainerLogsDrawer from './ContainerLogsDrawer'
+import EmulatorInspectDrawer from './EmulatorInspectDrawer'
 import { allContainers } from './useQaRunners'
 
 /**
@@ -43,6 +44,7 @@ export default function RunnerPanel({ runners, caps, loading, error, lastUpdated
   onRefresh: () => void
 }) {
   const [logsFor, setLogsFor] = useState<Row | null>(null)
+  const [inspectFor, setInspectFor] = useState<Row | null>(null)
   const rows = allContainers(runners) as Row[]
   const anyPodman = runners.some(r => r.online && r.podman)
 
@@ -83,7 +85,7 @@ export default function RunnerPanel({ runners, caps, loading, error, lastUpdated
 
           {anyPodman ? (
             <FlociContainerTable rows={rows} showRunner={runners.length > 1}
-                                 onLogs={setLogsFor} />
+                                 onLogs={setLogsFor} onInspect={setInspectFor} />
           ) : (
             <p style={{ ...muted, lineHeight: 1.6 }}>
               No connected runner has podman, so no cloud emulator can start. Tests that
@@ -104,6 +106,11 @@ export default function RunnerPanel({ runners, caps, loading, error, lastUpdated
       {logsFor && (
         <ContainerLogsDrawer runner={logsFor.runner} container={logsFor.name}
                              onClose={() => setLogsFor(null)} />
+      )}
+
+      {inspectFor && (
+        <EmulatorInspectDrawer runner={inspectFor.runner} cloud={inspectFor.cloud}
+                               onClose={() => setInspectFor(null)} />
       )}
     </div>
   )

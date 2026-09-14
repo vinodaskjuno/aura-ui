@@ -42,7 +42,11 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
   const [copied, setCopied] = useState(false)
   // Re-render once a second so "as of 12s ago" actually counts up between fetches.
   const [, tick] = useState(0)
-  const commandId = useRef('')
+  // STATE, not a ref. The polling effect below is gated on having a command id, and a
+  // ref assignment triggers no re-render — so the effect ran once on mount while the id
+  // was still empty, returned early, and never ran again. The request was sent, the
+  // answer was ready, and the drawer waited for it forever.
+  const [commandId, setCommandId] = useState('')
   const startedAt = useRef(0)
 
   const fetchLogs = useCallback(async () => {
@@ -51,7 +55,7 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
     startedAt.current = Date.now()
     try {
       const { data } = await qaApi.requestLogs(runner, container)
-      commandId.current = data.commandId
+      setCommandId(data.commandId)
     } catch (e: any) {
       setError(e?.response?.data?.detail ?? 'Could not ask the runner for logs.')
       setWaiting(false)
@@ -66,12 +70,12 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
   }, [])
 
   useEffect(() => {
-    if (!waiting || !commandId.current) return
+    if (!waiting || !commandId) return
     let stop = false
     const timer = setInterval(async () => {
       if (stop) return
       try {
-        const { data } = await qaApi.getLogs(runner, commandId.current)
+        const { data } = await qaApi.getLogs(runner, commandId)
         if (stop) return
         if (data.status === 'ready' || data.status === 'failed') {
           // Replaces rather than appends: `podman logs --tail` returns a window, not a
@@ -91,7 +95,7 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
       }
     }, POLL_MS)
     return () => { stop = true; clearInterval(timer) }
-  }, [waiting, runner])
+  }, [waiting, runner, commandId])
 
   // Only ever one request in flight: a new cycle starts from the end of the last one,
   // so a slow runner cannot accumulate a queue of pending log commands on its row.

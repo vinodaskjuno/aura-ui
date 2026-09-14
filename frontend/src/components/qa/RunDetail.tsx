@@ -15,6 +15,7 @@ import ArtifactViewer from './ArtifactViewer'
 import { RunEmulators } from './FlociContainerTable'
 import FlociTerminal from './FlociTerminal'
 import RunCost from './RunCost'
+import ResourceTable from './ResourceTable'
 import { runMachineLabel, runMachineName } from './useQaRunners'
 import { executionRate, hasCoverage } from './progress'
 
@@ -186,6 +187,18 @@ export default function RunDetail({ projectId, runId, status, onBack, onRerun, l
 
           <Section title="Cloud emulators">
             <EmulatorTable emulators={report.emulators || []} />
+          </Section>
+
+          {/* What the run actually reached. A green case proves the app answered;
+              this proves it reached the emulator. */}
+          <Section title="Cloud resources">
+            <ResourceTable
+              resources={report.resources}
+              emptyReason={report.emulators?.length
+                ? 'The emulators ran but held no resources — the application may not '
+                  + 'have written anything.'
+                : 'This project declares no cloud dependencies, so no emulator ran. '
+                  + 'Aura derives them from the packages your code imports.'} />
           </Section>
 
           <Section title="Model cost">

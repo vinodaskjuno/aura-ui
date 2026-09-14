@@ -1,4 +1,4 @@
-import { AlertTriangle, Circle, FileText, Loader2 } from 'lucide-react'
+import { AlertTriangle, Circle, FileText, Loader2, Search } from 'lucide-react'
 import type { QaContainer } from '../../api/qa'
 
 /**
@@ -28,9 +28,13 @@ function state(row: Row): { colour: string; label: string } {
   return { colour: '#f59e0b', label: row.status || 'starting' }
 }
 
-export default function FlociContainerTable({ rows, onLogs, showRunner = false }: {
+export default function FlociContainerTable({ rows, onLogs, onInspect,
+                                             showRunner = false }: {
   rows: Row[]
   onLogs?: (row: Row) => void
+  /** Look inside the emulator. Absent means no inspect control — the caller has no
+   *  runner to ask. */
+  onInspect?: (row: Row) => void
   showRunner?: boolean
 }) {
   if (!rows.length) {
@@ -98,10 +102,19 @@ export default function FlociContainerTable({ rows, onLogs, showRunner = false }
                 {showRunner && (
                   <td style={{ ...td, color: 'var(--color-text-secondary)' }}>{row.runner}</td>
                 )}
-                <td style={{ ...td, textAlign: 'right' }}>
+                <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {/* What is IN it, as opposed to what it printed. Only for a live
+                      container: a stale row would answer about nothing. */}
+                  {onInspect && row.cloud && !row.stale && (
+                    <button onClick={() => onInspect(row)} style={linkBtn}
+                            title="Look inside this emulator">
+                      <Search size={11} /> Inspect
+                    </button>
+                  )}
                   {/* Only containers Aura started. The backend refuses the rest too. */}
                   {onLogs && row.managed && (
-                    <button onClick={() => onLogs(row)} style={linkBtn}>
+                    <button onClick={() => onLogs(row)}
+                            style={{ ...linkBtn, marginLeft: 6 }}>
                       <FileText size={11} /> Logs
                     </button>
                   )}
@@ -118,7 +131,8 @@ export default function FlociContainerTable({ rows, onLogs, showRunner = false }
 /** The same table, scoped to one run, fed from its heartbeat rather than podman. */
 export function RunEmulators({ emulators, stale, onLogs }: {
   emulators: { cloud: string; port?: number; container?: string; image?: string
-               started?: boolean; stopped?: boolean; error?: string }[]
+               started?: boolean; stopped?: boolean; error?: string
+               adopted?: boolean }[]
   stale?: boolean
   /** Absent means no logs control — the caller has no runner to ask. */
   onLogs?: (container: string) => void
@@ -149,7 +163,12 @@ export function RunEmulators({ emulators, stale, onLogs }: {
                          color: 'var(--color-text-secondary)' }}>{e.container}</span>
           <span style={{ marginLeft: 'auto', fontSize: 11,
                          color: e.error ? '#ef4444' : 'var(--color-text-secondary)' }}>
-            {e.stopped ? 'stopped' : e.started ? 'ready' : e.error ? e.error.slice(0, 90) : 'starting…'}
+            {/* "Who will stop this" is the reader's real question, and adoption is the
+                answer that changes: an adopted emulator outlives the run. */}
+            {e.adopted ? 'yours, left running'
+              : e.stopped ? 'stopped'
+              : e.started ? 'ready'
+              : e.error ? e.error.slice(0, 90) : 'starting…'}
           </span>
           {/* Reachable from the run itself. It used to exist only in the Runner tab,
               which is not where anyone is looking while a run is in flight. */}
