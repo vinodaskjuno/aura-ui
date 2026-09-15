@@ -17,6 +17,10 @@ import ResourceTable from './ResourceTable'
  * up to one poll interval, exactly like ContainerLogsDrawer, and it carries the same
  * honest "as of Ns ago" rather than pretending to stream.
  */
+//: Floci's fixed ports, shown in the stat strip the way its own console shows the
+//: endpoint it is connected to. Display only — nothing connects from the browser.
+const PORTS: Record<string, number> = { aws: 4566, azure: 4577, gcp: 4588, oci: 4599 }
+
 const POLL_MS = 2000
 const GIVE_UP_MS = 40000
 
@@ -97,7 +101,7 @@ export default function EmulatorInspectDrawer({ runner, cloud, machine, onClose 
         initial={{ x: 560, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
         exit={{ x: 560, opacity: 0 }} transition={{ type: 'spring', damping: 26 }}
         style={{ position: 'fixed', top: 0, right: 0, bottom: 0,
-                 width: 'min(520px, 92vw)', background: 'var(--color-surface)',
+                 width: 'min(720px, 96vw)', background: 'var(--color-surface)',
                  borderLeft: '1px solid var(--color-border)', zIndex: 800,
                  display: 'flex', flexDirection: 'column' }}>
 
@@ -149,6 +153,7 @@ export default function EmulatorInspectDrawer({ runner, cloud, machine, onClose 
           )}
           {!waiting && !error && (
             <ResourceTable
+              endpoint={`http://localhost:${PORTS[cloud] ?? 4566}`}
               resources={result?.resources}
               emptyReason={'This emulator is running but holds nothing yet. Floci keeps '
                            + 'state in memory by default, so restarting the container '

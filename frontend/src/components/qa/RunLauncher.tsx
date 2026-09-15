@@ -366,7 +366,7 @@ export default function RunLauncher({ project, canRun, reason, runners, you, onC
                 watching the machine work matters most. */}
             <FlociTerminal
               activity={active?.activity ?? []}
-              machine={active ? runMachineName(active) : ''}
+              machine={active ? runMachineName(active, you) : ''}
               state={active?.emulatorsStale ? 'stalled' : 'live'}
               maxHeight={200} />
 

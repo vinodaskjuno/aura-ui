@@ -18,7 +18,7 @@ function capState(runner: QaRunner, flag: boolean): 'ok' | 'bad' | 'unknown' {
 import FlociContainerTable, { type Row } from './FlociContainerTable'
 import ContainerLogsDrawer from './ContainerLogsDrawer'
 import EmulatorInspectDrawer from './EmulatorInspectDrawer'
-import { allContainers } from './useQaRunners'
+import { allContainers, runnerLabel } from './useQaRunners'
 
 /**
  * The machine that actually runs the tests, and the Floci containers on it.
@@ -32,8 +32,10 @@ import { allContainers } from './useQaRunners'
  * command that fixes it.
  */
 export default function RunnerPanel({ runners, caps, loading, error, lastUpdated,
-                                     unauthorized, onRefresh }: {
+                                     unauthorized, you, onRefresh }: {
   runners: QaRunner[]
+  /** The viewer, so a machine can be called "yours" instead of named. */
+  you?: string
   caps: QaCapabilities | null
   loading: boolean
   error: string
@@ -65,7 +67,7 @@ export default function RunnerPanel({ runners, caps, loading, error, lastUpdated
         {!loading && !runners.length && !error && <NoRunner caps={caps} />}
 
         <div style={{ display: 'grid', gap: 10 }}>
-          {runners.map(r => <RunnerCard key={r.name} runner={r} />)}
+          {runners.map(r => <RunnerCard key={r.name} runner={r} you={you} />)}
         </div>
       </section>
 
@@ -116,7 +118,7 @@ export default function RunnerPanel({ runners, caps, loading, error, lastUpdated
   )
 }
 
-function RunnerCard({ runner }: { runner: QaRunner }) {
+function RunnerCard({ runner, you }: { runner: QaRunner; you?: string }) {
   const dot = runner.online ? '#10b981' : 'var(--color-text-secondary)'
   return (
     <div style={{ border: '1px solid var(--color-border)', borderRadius: 8,
@@ -124,7 +126,11 @@ function RunnerCard({ runner }: { runner: QaRunner }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Circle size={9} fill={dot} color={dot} />
         <span style={{ fontSize: 13, fontWeight: 650,
-                       fontFamily: 'var(--font-mono, monospace)' }}>{runner.name}</span>
+                       fontFamily: 'var(--font-mono, monospace)' }}>
+          {/* The hostname is reported and stored, but never shown: a personal device
+              name does not belong on a shared screen. */}
+          {runnerLabel(runner, you)}
+        </span>
         {runner.busyRunId && (
           <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4,
                          background: '#4f8ef722', color: '#4f8ef7' }}>running a test</span>

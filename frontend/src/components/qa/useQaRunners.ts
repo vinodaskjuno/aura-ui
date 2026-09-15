@@ -108,40 +108,37 @@ export function useQaRunners({ active, watching }: {
 /**
  * What to call a machine on screen.
  *
- * `name` is the identity the server assigns — `username/qa-runner` — which is not what
- * anyone calls their laptop. The machine name is what its operator typed, and is absent
- * from a runner that predates it, so this falls back rather than showing nothing.
+ * GENERIC ON PURPOSE. The runner reports its real hostname and the server stores it —
+ * it is genuinely useful in logs and support — but a personal machine name
+ * ("Someone-MacBook-Air") does not belong on a screen being shown to a customer, or to
+ * everyone else in the deployment. So the hostname is kept in the data and never
+ * rendered; the UI says whose machine it is, which is the question a reader actually
+ * has.
  *
- * This is the ONE place the "your machine" wording is decided. Four surfaces render it.
+ * `owner` is a username, not a device name, so naming it is safe.
  */
 export function runnerLabel(runner: QaRunner, you?: string): string {
-  const machine = runner.machine || runner.name
-  if (runner.owner && you && runner.owner === you) return `${machine} (your machine)`
-  return runner.owner ? `${machine} (${runner.owner})` : machine
+  if (runner.owner && you && runner.owner === you) return 'your machine'
+  return runner.owner ? `${runner.owner}'s machine` : 'a local machine'
 }
 
-/**
- * Just the machine a run is on, with no ownership suffix.
- *
- * Chrome — a terminal title bar, a one-word heading — wants the bare name; prose is
- * where "(your machine)" belongs. Saying it in both makes the chrome long and reads as
- * a stutter.
- */
+/** The machine a run is on, for chrome — a terminal title bar, a short heading. */
 export function runMachineName(
-  run: { runner?: string; runnerMachine?: string },
+  run: { runner?: string; runnerMachine?: string; runnerOwner?: string },
+  you?: string,
 ): string {
-  return run.runnerMachine || run.runner || ''
+  if (!(run.runnerMachine || run.runner)) return ''
+  if (run.runnerOwner && you && run.runnerOwner === you) return 'your machine'
+  return run.runnerOwner ? `${run.runnerOwner}'s machine` : 'a local machine'
 }
 
-/** The machine a run is executing on, named the same way, with who owns it. */
+/** The machine a run is on, for prose. Same wording — there is no longer a hostname to
+ *  add, so the two differ only in that this one returns "" for an unclaimed run. */
 export function runMachineLabel(
   run: { runner?: string; runnerMachine?: string; runnerOwner?: string },
   you?: string,
 ): string {
-  const machine = run.runnerMachine || run.runner || ''
-  if (!machine) return ''
-  if (run.runnerOwner && you && run.runnerOwner === you) return `${machine} (your machine)`
-  return run.runnerOwner ? `${machine} (${run.runnerOwner})` : machine
+  return runMachineName(run, you)
 }
 
 /**

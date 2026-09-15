@@ -764,6 +764,7 @@ export default function QAWorkspacePage() {
                   error={runnersState.error}
                   lastUpdated={runnersState.lastUpdated}
                   unauthorized={runnersState.unauthorized}
+                  you={runnersState.you}
                   onRefresh={runnersState.refresh}
                 />
               )}

@@ -85,8 +85,8 @@ export default function RunProgress({ run, runners = [], you, onCancel }: {
   const at = phaseIndex(run)
   const progress = runProgress(run)
   const failing = (run.totalFailed ?? 0) > 0
-  const where = runMachineLabel(run, you)     // prose: names the owner too
-  const machine = runMachineName(run)         // chrome: the bare machine name
+  const where = runMachineLabel(run, you)     // prose
+  const machine = runMachineName(run, you)    // chrome: same wording, no hostname
   // Reported by the machine itself. Omitted rather than guessed when it is not online.
   const os = runners.find(r => r.name === run.runner)?.os
 

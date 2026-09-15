@@ -59,7 +59,7 @@ export default function FlociControl({ projectId, runners, you }: {
           {!online.length
             ? 'No runner is connected, so there is no machine to start emulators on. '
               + 'Start one with `python -m src.qatest.agent`.'
-            : `A runner is connected${online[0].machine ? ` (${online[0].machine})` : ''}`
+            : `A runner is connected${online[0].owner ? ` (${online[0].owner}'s)` : ''}`
               + ', but it is not registered to you, so Aura will not start containers on '
               + 'it from here.'}
         </span>
