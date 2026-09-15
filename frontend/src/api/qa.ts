@@ -463,9 +463,9 @@ export const qaApi = {
     client.get<QaRunCost>(`/api/qa/runs/${runId}/cost`, { params: { projectId } }),
   /** Ask a runner what is in one of its live emulators. Answered on its NEXT poll —
    *  a round trip, not a stream. */
-  requestInventory: (runner: string, cloud: string) =>
+  requestInventory: (runner: string, cloud: string, projectId = '') =>
     client.post<{ commandId: string; status: string }>(
-      '/api/qa/runners/inventory', { runner, cloud }),
+      '/api/qa/runners/inventory', { runner, cloud, projectId }),
   getInventory: (runner: string, commandId: string) =>
     client.get<QaEmulatorInventory>(`/api/qa/runners/inventory/${commandId}`,
                                     { params: { runner } }),

@@ -32,11 +32,16 @@ const CHROME = '#161b22'
 const TEXT   = '#e6edf3'
 const DIM    = '#7d8590'
 
-export default function EmulatorInspectModal({ runner, cloud, machine, onClose }: {
+export default function EmulatorInspectModal({ runner, cloud, machine, projectId = '',
+                                               onClose }: {
   runner: string
   cloud: string
   /** How the machine is labelled elsewhere, so the drawer names the same thing. */
   machine?: string
+  /** Whose resources to show. The emulator is shared by every project on the machine
+   *  and Floci separates them by AWS account, so without this the panel reports the
+   *  default namespace rather than this project's. */
+  projectId?: string
   onClose: () => void
 }) {
   const [result, setResult] = useState<QaEmulatorInventory | null>(null)
@@ -59,13 +64,13 @@ export default function EmulatorInspectModal({ runner, cloud, machine, onClose }
     startedAt.current = Date.now()
     retried.current = false
     try {
-      const { data } = await qaApi.requestInventory(runner, cloud)
+      const { data } = await qaApi.requestInventory(runner, cloud, projectId)
       setCommandId(data.commandId)
     } catch (e: any) {
       setError(e?.response?.data?.detail ?? 'Could not ask the runner to look.')
       setWaiting(false)
     }
-  }, [runner, cloud])
+  }, [runner, cloud, projectId])
 
   useEffect(() => { fetchInventory() }, [fetchInventory])
 

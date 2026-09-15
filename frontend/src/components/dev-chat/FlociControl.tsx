@@ -11,9 +11,11 @@ import FlociLogPanel from './FlociLogPanel'
  * Start this project's cloud emulators, and stop them when you choose.
  *
  * The emulators a run starts die with it, which makes them impossible to work against
- * and impossible to inspect afterwards. These are project-scoped
- * (`aura-dev-<cloud>-<projectId>`): they are yours, they outlive any number of runs, and
- * a run that finds them adopts them rather than tearing them down.
+ * and impossible to inspect afterwards. These are machine-scoped (`aura-dev-<cloud>`):
+ * ONE per cloud, shared by every project here, outliving any number of runs. Floci's
+ * ports are fixed, so a container per project could never run at the same time as
+ * another — projects are kept apart by AWS account INSIDE the emulator instead, and each
+ * one sees only its own resources.
  *
  * NOT INSTANT, and the button says so. This server is on Fargate and cannot start a
  * container on a laptop; the runner has no inbound port and polls. So Start parks a
@@ -61,11 +63,15 @@ export default function FlociControl({ projectId, runners, you }: {
     [runners, you])
   const online = useMemo(() => runners.filter(r => r.online), [runners])
 
-  // Project-scoped containers, told apart from a run's own by name.
+  // Aura's DevMate emulators on this machine, told apart from a run's own by name.
   const containers = useMemo(
-    () => (mine?.containers || []).filter(c => c.name.startsWith(`aura-dev-`)
-                                            && c.name.endsWith(projectId)),
-    [mine, projectId])
+    // Every DevMate emulator, not this project's own. There is ONE per cloud for the
+    // whole machine now — Floci's ports are fixed, so per-project containers could never
+    // run together — and projects are separated by AWS account inside it instead. The
+    // old `endsWith(projectId)` filter is exactly what made the panel go blank when a
+    // colleague's, or your own other project's, emulator held the port.
+    () => (mine?.containers || []).filter(c => c.name.startsWith(`aura-dev-`)),
+    [mine])
 
   // Clearing on the container list alone was not enough: that only changes when the
   // command SUCCEEDS. A refused start — most often because another project already holds
@@ -198,7 +204,8 @@ export default function FlociControl({ projectId, runners, you }: {
           onClick={() => act(running ? 'stop' : 'start')}
           disabled={!!busy}
           title={running
-            ? 'Stop these emulators. Nothing else uses them.'
+            ? 'Stop the shared emulator. This affects every project on this machine, '
+              + 'and Floci keeps state in memory, so their resources go too.'
             : 'Start the emulators this project’s dependencies imply'}
           style={{ marginLeft: running ? 0 : 'auto', display: 'inline-flex',
                    alignItems: 'center',
@@ -276,13 +283,14 @@ export default function FlociControl({ projectId, runners, you }: {
       ) : !busy && (
         <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: 0,
                     lineHeight: 1.6 }}>
-          No emulators running for this project. Aura starts the ones your dependencies
-          imply, and leaves them up until you stop them.
+          No emulators running on this machine. Aura starts the ones your dependencies
+          imply and leaves them up until you stop them — one per cloud, shared by every
+          project here, each project seeing only its own resources.
         </p>
       )}
 
       {inspect && (
-        <EmulatorInspectModal runner={mine.name} cloud={inspect}
+        <EmulatorInspectModal runner={mine.name} cloud={inspect} projectId={projectId}
                                machine={runnerLabel(mine, you)}
                                onClose={() => setInspect('')} />
       )}
