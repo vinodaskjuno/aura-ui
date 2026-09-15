@@ -3,7 +3,7 @@ import { Boxes, ExternalLink, Loader2, Play, Search, Square } from 'lucide-react
 import { qaApi } from '../../api/qa'
 import type { QaRunner } from '../../api/qa'
 import { runnerLabel } from '../qa/useQaRunners'
-import EmulatorInspectDrawer from '../qa/EmulatorInspectDrawer'
+import EmulatorInspectModal from '../qa/EmulatorInspectModal'
 
 /**
  * Start this project's cloud emulators, and stop them when you choose.
@@ -166,7 +166,7 @@ export default function FlociControl({ projectId, runners, you }: {
       )}
 
       {inspect && (
-        <EmulatorInspectDrawer runner={mine.name} cloud={inspect}
+        <EmulatorInspectModal runner={mine.name} cloud={inspect}
                                machine={runnerLabel(mine, you)}
                                onClose={() => setInspect('')} />
       )}

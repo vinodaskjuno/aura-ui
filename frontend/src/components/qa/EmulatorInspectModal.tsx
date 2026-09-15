@@ -12,6 +12,10 @@ import ResourceTable from './ResourceTable'
  * "what is in there at this moment", which only becomes a question worth asking once an
  * emulator outlives a run — started from `floci-cli` or from DevMate.
  *
+ * A centred MODAL rather than a side drawer, and shaped like Floci's own console: this
+ * is a dashboard, not a log tail. A drawer is right for a stream of text you read beside
+ * something else; a grid of service cards wants the width and the focus of the screen.
+ *
  * NOT live, and the header says so. The API is on Fargate and can never reach a
  * laptop's :4566; only the runner can, and the runner polls. So this is a round trip of
  * up to one poll interval, exactly like ContainerLogsDrawer, and it carries the same
@@ -28,7 +32,7 @@ const CHROME = '#161b22'
 const TEXT   = '#e6edf3'
 const DIM    = '#7d8590'
 
-export default function EmulatorInspectDrawer({ runner, cloud, machine, onClose }: {
+export default function EmulatorInspectModal({ runner, cloud, machine, onClose }: {
   runner: string
   cloud: string
   /** How the machine is labelled elsewhere, so the drawer names the same thing. */
@@ -97,36 +101,55 @@ export default function EmulatorInspectDrawer({ runner, cloud, machine, onClose 
 
   return (
     <AnimatePresence>
-      <motion.aside
-        initial={{ x: 560, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
-        exit={{ x: 560, opacity: 0 }} transition={{ type: 'spring', damping: 26 }}
-        style={{ position: 'fixed', top: 0, right: 0, bottom: 0,
-                 width: 'min(720px, 96vw)', background: 'var(--color-surface)',
-                 borderLeft: '1px solid var(--color-border)', zIndex: 800,
-                 display: 'flex', flexDirection: 'column' }}>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        style={{ position: 'fixed', inset: 0, zIndex: 800, display: 'flex',
+                 alignItems: 'center', justifyContent: 'center', padding: 24,
+                 background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)' }}>
+        <motion.div
+          initial={{ scale: 0.96, y: 12, opacity: 0 }}
+          animate={{ scale: 1, y: 0, opacity: 1 }}
+          exit={{ scale: 0.97, y: 8, opacity: 0 }}
+          transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+          onClick={e => e.stopPropagation()}
+          style={{ width: 'min(1020px, 96vw)', maxHeight: '88vh',
+                   display: 'flex', flexDirection: 'column',
+                   background: 'var(--color-card)', borderRadius: 14,
+                   border: '1px solid var(--color-border)',
+                   boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
 
-        <header style={{ padding: '10px 12px', borderBottom: '1px solid #30363d',
-                         background: CHROME }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span aria-hidden style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
-              {['#ff5f57', '#febc2e', '#28c840'].map(c => (
-                <span key={c} style={{ width: 9, height: 9, borderRadius: '50%',
-                                       background: c, opacity: 0.9 }} />
-              ))}
-            </span>
-            <div style={{ minWidth: 0, marginLeft: 4 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: TEXT,
-                            fontFamily: 'var(--font-mono)' }}>
-                {cloud} emulator{machine ? ` — ${machine}` : ''}
+          {/* Floci's own chrome: traffic lights, the runtime it is connected to, and how
+              old the answer is. */}
+          <header style={{ padding: '11px 14px', background: CHROME,
+                           borderBottom: '1px solid #30363d', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+              <span aria-hidden style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                {['#ff5f57', '#febc2e', '#28c840'].map(c => (
+                  <span key={c} style={{ width: 10, height: 10, borderRadius: '50%',
+                                         background: c, opacity: 0.9 }} />
+                ))}
+              </span>
+              <div style={{ minWidth: 0, marginLeft: 5 }}>
+                <div style={{ fontSize: 13, fontWeight: 650, color: TEXT,
+                              fontFamily: 'var(--font-mono)' }}>
+                  {cloud} emulator{machine ? ` — ${machine}` : ''}
+                </div>
+                <div style={{ fontSize: 10.5, color: DIM, marginTop: 2 }}>
+                  {/* Deliberately never "live". See the note at the top of this file. */}
+                  {waiting ? `asking the runner…`
+                           : result?.fetchedAt ? `floci · as of ${ago(result.fetchedAt)}`
+                           : 'floci'}
+                </div>
               </div>
-              <div style={{ fontSize: 10.5, color: DIM, marginTop: 2 }}>
-                {/* Deliberately never "live". See the note at the top of this file. */}
-                {waiting ? `asking ${runner}…`
-                         : result?.fetchedAt ? `floci · as of ${ago(result.fetchedAt)}`
-                         : `on ${runner}`}
-              </div>
-            </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexShrink: 0 }}>
+              <span style={{ marginLeft: 'auto', display: 'inline-flex',
+                             alignItems: 'center', gap: 6, flexShrink: 0,
+                             fontSize: 10.5, color: DIM, padding: '3px 9px',
+                             border: '1px solid #30363d', borderRadius: 999 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%',
+                               background: waiting ? '#d29922' : '#3fb950' }} />
+                {`http://localhost:${PORTS[cloud] ?? 4566}`}
+              </span>
               <button onClick={fetchInventory} disabled={waiting} style={iconBtn}
                       title="Look again">
                 {waiting ? <Loader2 size={13} className="animate-spin" />
@@ -136,31 +159,30 @@ export default function EmulatorInspectDrawer({ runner, cloud, machine, onClose 
                 <X size={14} />
               </button>
             </div>
-          </div>
-        </header>
+          </header>
 
-        <div style={{ flex: 1, overflow: 'auto', padding: 14,
-                      background: 'var(--color-surface)' }}>
-          {waiting && !result && (
-            <p style={{ fontSize: 12, color: 'var(--color-text-secondary)',
-                        display: 'flex', gap: 8, alignItems: 'center', margin: 0 }}>
-              <Loader2 size={13} className="animate-spin" />
-              Waiting for {runner} to look — it collects requests on its next poll.
-            </p>
-          )}
-          {!!error && (
-            <p style={{ fontSize: 12, color: '#ef4444', lineHeight: 1.7 }}>{error}</p>
-          )}
-          {!waiting && !error && (
-            <ResourceTable
-              endpoint={`http://localhost:${PORTS[cloud] ?? 4566}`}
-              resources={result?.resources}
-              emptyReason={'This emulator is running but holds nothing yet. Floci keeps '
-                           + 'state in memory by default, so restarting the container '
-                           + 'empties it.'} />
-          )}
-        </div>
-      </motion.aside>
+          <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+            {waiting && !result && (
+              <p style={{ fontSize: 12, color: 'var(--color-text-secondary)',
+                          display: 'flex', gap: 8, alignItems: 'center', margin: 0 }}>
+                <Loader2 size={13} className="animate-spin" />
+                Waiting for the runner to look — it collects requests on its next poll.
+              </p>
+            )}
+            {!!error && (
+              <p style={{ fontSize: 12, color: '#ef4444', lineHeight: 1.7 }}>{error}</p>
+            )}
+            {!waiting && !error && (
+              <ResourceTable
+                endpoint={`http://localhost:${PORTS[cloud] ?? 4566}`}
+                resources={result?.resources}
+                emptyReason={'This emulator is running but holds nothing yet. Floci keeps '
+                             + 'state in memory by default, so restarting the container '
+                             + 'empties it.'} />
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
     </AnimatePresence>
   )
 }

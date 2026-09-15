@@ -17,7 +17,7 @@ function capState(runner: QaRunner, flag: boolean): 'ok' | 'bad' | 'unknown' {
 }
 import FlociContainerTable, { type Row } from './FlociContainerTable'
 import ContainerLogsDrawer from './ContainerLogsDrawer'
-import EmulatorInspectDrawer from './EmulatorInspectDrawer'
+import EmulatorInspectModal from './EmulatorInspectModal'
 import { allContainers, runnerLabel } from './useQaRunners'
 
 /**
@@ -111,7 +111,7 @@ export default function RunnerPanel({ runners, caps, loading, error, lastUpdated
       )}
 
       {inspectFor && (
-        <EmulatorInspectDrawer runner={inspectFor.runner} cloud={inspectFor.cloud}
+        <EmulatorInspectModal runner={inspectFor.runner} cloud={inspectFor.cloud}
                                onClose={() => setInspectFor(null)} />
       )}
     </div>
