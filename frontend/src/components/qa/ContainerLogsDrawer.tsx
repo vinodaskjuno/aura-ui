@@ -48,11 +48,15 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
   // answer was ready, and the drawer waited for it forever.
   const [commandId, setCommandId] = useState('')
   const startedAt = useRef(0)
+  // One re-ask only. Two clients racing for the slot would otherwise
+  // re-request forever, each superseding the other.
+  const retried = useRef(false)
 
   const fetchLogs = useCallback(async () => {
     setWaiting(true)
     setError('')
     startedAt.current = Date.now()
+    retried.current = false
     try {
       const { data } = await qaApi.requestLogs(runner, container)
       setCommandId(data.commandId)
@@ -77,6 +81,17 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
       try {
         const { data } = await qaApi.getLogs(runner, commandId)
         if (stop) return
+        if (data.status === 'superseded') {
+          // A newer request took the runner's single command slot. Re-ask once rather
+          // than polling a dead id until the timeout and claiming the runner is silent.
+          if (!retried.current) {
+            retried.current = true
+            stop = true
+            clearInterval(timer)
+            fetchLogs()
+          }
+          return
+        }
         if (data.status === 'ready' || data.status === 'failed') {
           // Replaces rather than appends: `podman logs --tail` returns a window, not a
           // delta, so appending would duplicate every line that is still in the tail.
@@ -95,7 +110,7 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
       }
     }, POLL_MS)
     return () => { stop = true; clearInterval(timer) }
-  }, [waiting, runner, commandId])
+  }, [waiting, runner, commandId, fetchLogs])
 
   // Only ever one request in flight: a new cycle starts from the end of the last one,
   // so a slow runner cannot accumulate a queue of pending log commands on its row.

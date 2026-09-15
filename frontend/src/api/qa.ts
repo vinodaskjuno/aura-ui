@@ -345,7 +345,7 @@ export interface QaContainer {
 }
 
 export interface QaContainerLogs {
-  status:     'pending' | 'ready' | 'failed'
+  status:     'pending' | 'ready' | 'failed' | 'superseded'
   container:  string
   lines?:     string[]
   fetchedAt?: string
@@ -386,7 +386,9 @@ export interface QaRunCost {
 /** A live read of one emulator, from the runner. Up to one poll interval old — the
  *  drawer says so rather than calling itself live. */
 export interface QaEmulatorInventory {
-  status:     'pending' | 'ready' | 'failed'
+  /** `superseded`: a newer request replaced this one — re-ask rather than wait. The
+   *  runner row holds a single command slot. */
+  status:     'pending' | 'ready' | 'failed' | 'superseded'
   cloud:      string
   resources?: QaResources
   fetchedAt?: string

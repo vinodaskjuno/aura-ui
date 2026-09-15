@@ -49,11 +49,15 @@ export default function EmulatorInspectModal({ runner, cloud, machine, onClose }
   // answer was ready, and the drawer waited for it forever.
   const [commandId, setCommandId] = useState('')
   const startedAt = useRef(0)
+  // One re-ask only. Two clients racing for the slot would otherwise
+  // re-request forever, each superseding the other.
+  const retried = useRef(false)
 
   const fetchInventory = useCallback(async () => {
     setWaiting(true)
     setError('')
     startedAt.current = Date.now()
+    retried.current = false
     try {
       const { data } = await qaApi.requestInventory(runner, cloud)
       setCommandId(data.commandId)
@@ -79,6 +83,17 @@ export default function EmulatorInspectModal({ runner, cloud, machine, onClose }
       try {
         const { data } = await qaApi.getInventory(runner, commandId)
         if (stop) return
+        if (data.status === 'superseded') {
+          // A newer request took the runner's single command slot. Re-ask once rather
+          // than polling a dead id until the timeout and claiming the runner is silent.
+          if (!retried.current) {
+            retried.current = true
+            stop = true
+            clearInterval(timer)
+            fetchInventory()
+          }
+          return
+        }
         if (data.status === 'ready' || data.status === 'failed') {
           setResult(data)
           setWaiting(false)
@@ -97,7 +112,7 @@ export default function EmulatorInspectModal({ runner, cloud, machine, onClose }
       }
     }, POLL_MS)
     return () => { stop = true; clearInterval(timer) }
-  }, [waiting, runner, commandId])
+  }, [waiting, runner, commandId, fetchInventory])
 
   return (
     <AnimatePresence>
