@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, Copy, Loader2, RefreshCw, X } from 'lucide-react'
-import { qaApi } from '../../api/qa'
-import type { QaContainerLogs } from '../../api/qa'
+import { FOLLOW_MS, useContainerLogs } from './useContainerLogs'
 
 /**
  * `podman logs` for one Floci container.
@@ -19,12 +18,6 @@ import type { QaContainerLogs } from '../../api/qa'
  * Dressed as a terminal to match FlociTerminal — the two show output from the same
  * machine and should look like the same kind of object.
  */
-const POLL_MS = 2000
-const GIVE_UP_MS = 40000
-/** One agent state-report interval plus slack. Asking faster cannot produce newer
- *  output; it only spends requests. */
-const FOLLOW_MS = 15000
-
 const GROUND = '#0d1117'
 const CHROME = '#161b22'
 const TEXT   = '#e6edf3'
@@ -35,90 +28,17 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
   container: string
   onClose: () => void
 }) {
-  const [logs, setLogs] = useState<QaContainerLogs | null>(null)
-  const [error, setError] = useState('')
-  const [waiting, setWaiting] = useState(true)
   const [follow, setFollow] = useState(false)
   const [copied, setCopied] = useState(false)
   // Re-render once a second so "as of 12s ago" actually counts up between fetches.
   const [, tick] = useState(0)
-  // STATE, not a ref. The polling effect below is gated on having a command id, and a
-  // ref assignment triggers no re-render — so the effect ran once on mount while the id
-  // was still empty, returned early, and never ran again. The request was sent, the
-  // answer was ready, and the drawer waited for it forever.
-  const [commandId, setCommandId] = useState('')
-  const startedAt = useRef(0)
-  // One re-ask only. Two clients racing for the slot would otherwise
-  // re-request forever, each superseding the other.
-  const retried = useRef(false)
-
-  const fetchLogs = useCallback(async () => {
-    setWaiting(true)
-    setError('')
-    startedAt.current = Date.now()
-    retried.current = false
-    try {
-      const { data } = await qaApi.requestLogs(runner, container)
-      setCommandId(data.commandId)
-    } catch (e: any) {
-      setError(e?.response?.data?.detail ?? 'Could not ask the runner for logs.')
-      setWaiting(false)
-    }
-  }, [runner, container])
-
-  useEffect(() => { fetchLogs() }, [fetchLogs])
+  const { logs, error, waiting, refetch: fetchLogs } =
+    useContainerLogs(runner, container, follow)
 
   useEffect(() => {
     const t = setInterval(() => tick(n => n + 1), 1000)
     return () => clearInterval(t)
   }, [])
-
-  useEffect(() => {
-    if (!waiting || !commandId) return
-    let stop = false
-    const timer = setInterval(async () => {
-      if (stop) return
-      try {
-        const { data } = await qaApi.getLogs(runner, commandId)
-        if (stop) return
-        if (data.status === 'superseded') {
-          // A newer request took the runner's single command slot. Re-ask once rather
-          // than polling a dead id until the timeout and claiming the runner is silent.
-          if (!retried.current) {
-            retried.current = true
-            stop = true
-            clearInterval(timer)
-            fetchLogs()
-          }
-          return
-        }
-        if (data.status === 'ready' || data.status === 'failed') {
-          // Replaces rather than appends: `podman logs --tail` returns a window, not a
-          // delta, so appending would duplicate every line that is still in the tail.
-          setLogs(data)
-          setWaiting(false)
-          if (data.status === 'failed') setError(data.error || 'The runner could not read that container.')
-        } else if (Date.now() - startedAt.current > GIVE_UP_MS) {
-          setWaiting(false)
-          setError(`${runner} did not answer. It may have gone offline.`)
-        }
-      } catch {
-        if (Date.now() - startedAt.current > GIVE_UP_MS) {
-          setWaiting(false)
-          setError('The runner did not answer.')
-        }
-      }
-    }, POLL_MS)
-    return () => { stop = true; clearInterval(timer) }
-  }, [waiting, runner, commandId, fetchLogs])
-
-  // Only ever one request in flight: a new cycle starts from the end of the last one,
-  // so a slow runner cannot accumulate a queue of pending log commands on its row.
-  useEffect(() => {
-    if (!follow || waiting) return
-    const t = setTimeout(fetchLogs, FOLLOW_MS)
-    return () => clearTimeout(t)
-  }, [follow, waiting, fetchLogs, logs])
 
   const text = (logs?.lines || []).join('\n')
 

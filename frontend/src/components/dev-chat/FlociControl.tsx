@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Boxes, ExternalLink, Loader2, Play, Search, Square } from 'lucide-react'
+import { Boxes, ExternalLink, Loader2, Play, Search, Square, Terminal } from 'lucide-react'
 import { qaApi } from '../../api/qa'
 import type { QaRunner } from '../../api/qa'
 import { runnerLabel } from '../qa/useQaRunners'
 import EmulatorInspectModal from '../qa/EmulatorInspectModal'
+import FlociLogPanel from './FlociLogPanel'
 
 /**
  * Start this project's cloud emulators, and stop them when you choose.
@@ -35,6 +36,18 @@ export default function FlociControl({ projectId, runners, you }: {
   const [command, setCommand] = useState('')
   const [error, setError] = useState('')
   const [inspect, setInspect] = useState('')
+  // Remembered per project. Someone who keeps the terminal open is watching emulators
+  // work and wants it open the next time too; someone who closed it does not want it
+  // reappearing on every visit. Wrapped because storage throws in some privacy modes,
+  // and a terminal preference must never be what stops the panel rendering.
+  const [showTerminal, setShowTerminal] = useState(() => {
+    try { return localStorage.getItem(`floci.terminal.${projectId}`) === '1' }
+    catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem(`floci.terminal.${projectId}`, showTerminal ? '1' : '0') }
+    catch { /* a preference is not worth an error */ }
+  }, [showTerminal, projectId])
 
   // The runner this viewer owns. Ownership rather than "any online runner": Start on
   // someone else's machine is an action the presser cannot observe or undo.
@@ -104,6 +117,9 @@ export default function FlociControl({ projectId, runners, you }: {
   const act = async (action: 'start' | 'stop') => {
     setBusy(action)
     setError('')
+    // Opened on the press, not on success: the panel's own header explains that it is
+    // waiting on the runner's next poll, which is the part of the wait worth seeing.
+    if (action === 'start') setShowTerminal(true)
     try {
       const { data } = await qaApi.controlEmulators(projectId, action, mine.name)
       setCommand(data.commandId)
@@ -128,13 +144,26 @@ export default function FlociControl({ projectId, runners, you }: {
           on {runnerLabel(mine, you)}
         </span>
 
+        {running && (
+          <button
+            onClick={() => setShowTerminal(v => !v)}
+            title={showTerminal ? 'Hide the emulator output'
+                                : 'Watch what the emulator is printing'}
+            style={{ ...linkBtn, marginLeft: 'auto',
+                     color: showTerminal ? 'var(--color-text)'
+                                         : 'var(--color-text-secondary)' }}>
+            <Terminal size={10} /> {showTerminal ? 'Hide terminal' : 'Terminal'}
+          </button>
+        )}
+
         <button
           onClick={() => act(running ? 'stop' : 'start')}
           disabled={!!busy}
           title={running
             ? 'Stop these emulators. Nothing else uses them.'
             : 'Start the emulators this project’s dependencies imply'}
-          style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center',
+          style={{ marginLeft: running ? 0 : 'auto', display: 'inline-flex',
+                   alignItems: 'center',
                    gap: 5, fontSize: 11, fontWeight: 600, padding: '4px 10px',
                    borderRadius: 6, cursor: busy ? 'default' : 'pointer',
                    border: `1px solid ${running ? 'rgba(239,68,68,0.3)'
@@ -181,6 +210,13 @@ export default function FlociControl({ projectId, runners, you }: {
               </button>
             </div>
           ))}
+          {showTerminal && containers[0] && (
+            <div style={{ marginTop: 4 }}>
+              <FlociLogPanel runner={mine.name} container={containers[0].name}
+                             label={runnerLabel(mine, you)} />
+            </div>
+          )}
+
           {flociUi?.running && (
             /* Only useful because these emulators outlive the run. Owner-only, and the
                link resolves on the viewer's own machine — which is this one. */
