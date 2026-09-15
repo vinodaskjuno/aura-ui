@@ -408,6 +408,27 @@ export interface QaPolicyControl {
   detail:  string
 }
 
+/** One control's verdict on ONE resource. */
+export interface QaPolicyResourceControl {
+  id:     string
+  title:  string
+  ok:     boolean
+  detail: string
+  remedy: string
+}
+
+/** A declared resource and the controls that apply to it.
+ *  `applicable: 0` means NO control reads this resource type — which is not the same as
+ *  passing, and must never be rendered as though it were. */
+export interface QaPolicyResource {
+  name:       string
+  type:       string
+  file:       string
+  applicable: number
+  passed:     number
+  controls:   QaPolicyResourceControl[]
+}
+
 export interface QaPolicy {
   /** False when the project ships no IaC. Distinct from "everything passed": a project
    *  nobody assessed and a clean one are different facts. */
@@ -416,6 +437,11 @@ export interface QaPolicy {
   passed:     number
   total:      number
   reason?:    string
+  /** The same evaluation pivoted by resource. Absent on an older server. */
+  resources?:             QaPolicyResource[]
+  resourceTotal?:         number
+  resourcesWithFindings?: number
+  resourcesNotChecked?:   number
 }
 
 export interface TestArtifact {

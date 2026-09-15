@@ -76,7 +76,11 @@ export default function CaseTable({ report, steps }: {
             Did not run {counts.notRun}
           </Chip>
         )}
-        {(['ui', 'api', 'smoke', 'structure', 'stack'] as CaseKind[]).map(k => {
+        {/* `policy` was omitted, so policy cases were reachable only through All or
+          Failed — they have their own colour and their own meaning and should be
+          filterable like every other kind. */}
+      {(['ui', 'api', 'smoke', 'structure', 'stack',
+         'policy'] as CaseKind[]).map(k => {
           const n = rows.filter(r => r.testCase.kind === k).length
           return n ? (
             <Chip key={k} on={filter === k} onClick={() => setFilter(k)} colour={KIND_COLOUR[k]}>

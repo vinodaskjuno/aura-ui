@@ -1213,7 +1213,8 @@ export default function DevChatbotPage() {
             <FlociControl projectId={selectedProject.id}
                           runners={runnersState.runners}
                           you={runnersState.you} />
-            <PolicyPanel projectId={selectedProject.id} />
+            <PolicyPanel projectId={selectedProject.id}
+                         projectName={selectedProject.name} />
           </div>
         )}
 
