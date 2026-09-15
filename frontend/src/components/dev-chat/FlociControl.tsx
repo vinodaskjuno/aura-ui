@@ -22,12 +22,17 @@ import EmulatorInspectModal from '../qa/EmulatorInspectModal'
  * emulator" mean different machines for different viewers, so offering Start to someone
  * who does not own the runner would act on a machine they cannot see.
  */
+//: Long enough for a slow image pull, short enough that a dead runner is not mistaken
+//: for a slow one.
+const GIVE_UP_MS = 120000
+
 export default function FlociControl({ projectId, runners, you }: {
   projectId: string
   runners: QaRunner[]
   you?: string
 }) {
   const [busy, setBusy] = useState<'start' | 'stop' | ''>('')
+  const [command, setCommand] = useState('')
   const [error, setError] = useState('')
   const [inspect, setInspect] = useState('')
 
@@ -44,9 +49,38 @@ export default function FlociControl({ projectId, runners, you }: {
                                             && c.name.endsWith(projectId)),
     [mine, projectId])
 
-  // While a start or stop is in flight the runner has not polled yet, so the container
-  // list is still the OLD truth. Clear the pending state once it changes.
+  // Clearing on the container list alone was not enough: that only changes when the
+  // command SUCCEEDS. A refused start — most often because another project already holds
+  // the fixed port — left the button on "starting…" indefinitely while the reason sat
+  // unread on the runner's row. So the outcome is polled, and a failure is shown.
   useEffect(() => { setBusy('') }, [containers.length])
+
+  useEffect(() => {
+    if (!command || !mine) return
+    let stop = false
+    const started = Date.now()
+    const timer = setInterval(async () => {
+      if (stop) return
+      try {
+        const { data } = await qaApi.commandStatus(mine.name, command)
+        if (stop) return
+        if (data.status === 'failed') {
+          setError(data.error || 'The runner could not carry that out.')
+          setBusy(''); setCommand('')
+        } else if (data.status === 'ready' || data.status === 'superseded') {
+          // Success is confirmed by the container list, which the next state report
+          // brings. Stop polling either way.
+          setCommand('')
+        } else if (Date.now() - started > GIVE_UP_MS) {
+          setError('The runner did not report back. It may have gone offline.')
+          setBusy(''); setCommand('')
+        }
+      } catch {
+        if (Date.now() - started > GIVE_UP_MS) { setBusy(''); setCommand('') }
+      }
+    }, 3000)
+    return () => { stop = true; clearInterval(timer) }
+  }, [command, mine])
 
   // Explain rather than vanish. Rendering nothing when there is no usable runner leaves
   // the reader unable to tell a missing feature from an unmet precondition — which is
@@ -71,7 +105,8 @@ export default function FlociControl({ projectId, runners, you }: {
     setBusy(action)
     setError('')
     try {
-      await qaApi.controlEmulators(projectId, action, mine.name)
+      const { data } = await qaApi.controlEmulators(projectId, action, mine.name)
+      setCommand(data.commandId)
     } catch (e: any) {
       setError(e?.response?.data?.detail || `Could not ${action} the emulators.`)
       setBusy('')

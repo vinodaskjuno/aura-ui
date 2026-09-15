@@ -469,6 +469,12 @@ export const qaApi = {
   getInventory: (runner: string, commandId: string) =>
     client.get<QaEmulatorInventory>(`/api/qa/runners/inventory/${commandId}`,
                                     { params: { runner } }),
+  /** The outcome of a parked command. Start and Stop are fire-and-park, so this is the
+   *  only way the UI learns that one FAILED rather than merely being slow. */
+  commandStatus: (runner: string, commandId: string) =>
+    client.get<{ status: 'pending' | 'ready' | 'failed' | 'superseded'
+                 error?: string; reason?: string }>(
+      `/api/qa/runners/command/${commandId}`, { params: { runner } }),
   /** Start or stop a project's own emulators, from DevMate. The clouds are derived
    *  server-side from the project's dependencies. */
   controlEmulators: (projectId: string, action: 'start' | 'stop', runner: string) =>
