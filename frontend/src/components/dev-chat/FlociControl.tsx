@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Boxes, ExternalLink, Loader2, Play, Search, Square, Terminal } from 'lucide-react'
+import { Boxes, ExternalLink, Loader2, Play, Search, Sparkles, Square, Terminal }
+  from 'lucide-react'
 import { qaApi } from '../../api/qa'
 import type { QaRunner } from '../../api/qa'
 import { runnerLabel } from '../qa/useQaRunners'
@@ -26,13 +27,17 @@ import FlociLogPanel from './FlociLogPanel'
 //: Long enough for a slow image pull, short enough that a dead runner is not mistaken
 //: for a slow one.
 const GIVE_UP_MS = 120000
+//: Populate is a different order of magnitude: it installs the project's dependencies on
+//: the runner (up to 900s per directory) before it can even start the app. Judging it by
+//: the emulator's window would abandon a perfectly healthy populate minutes early.
+const POPULATE_GIVE_UP_MS = 900000
 
 export default function FlociControl({ projectId, runners, you }: {
   projectId: string
   runners: QaRunner[]
   you?: string
 }) {
-  const [busy, setBusy] = useState<'start' | 'stop' | ''>('')
+  const [busy, setBusy] = useState<'start' | 'stop' | 'populate' | ''>('')
   const [command, setCommand] = useState('')
   const [error, setError] = useState('')
   const [inspect, setInspect] = useState('')
@@ -66,12 +71,16 @@ export default function FlociControl({ projectId, runners, you }: {
   // command SUCCEEDS. A refused start — most often because another project already holds
   // the fixed port — left the button on "starting…" indefinitely while the reason sat
   // unread on the runner's row. So the outcome is polled, and a failure is shown.
-  useEffect(() => { setBusy('') }, [containers.length])
+  // Populate deliberately does NOT clear here: it leaves the container list untouched
+  // (it fills the emulator rather than starting one), so only its command result can say
+  // it is done.
+  useEffect(() => { setBusy(b => (b === 'populate' ? b : '')) }, [containers.length])
 
   useEffect(() => {
     if (!command || !mine) return
     let stop = false
     const started = Date.now()
+    const limit = busy === 'populate' ? POPULATE_GIVE_UP_MS : GIVE_UP_MS
     const timer = setInterval(async () => {
       if (stop) return
       try {
@@ -81,18 +90,21 @@ export default function FlociControl({ projectId, runners, you }: {
           setError(data.error || 'The runner could not carry that out.')
           setBusy(''); setCommand('')
         } else if (data.status === 'ready' || data.status === 'superseded') {
-          // Success is confirmed by the container list, which the next state report
-          // brings. Stop polling either way.
+          // For start/stop, success is confirmed by the container list the next state
+          // report brings. Populate changes no containers, so this IS its completion.
+          setBusy(b => (b === 'populate' ? '' : b))
           setCommand('')
-        } else if (Date.now() - started > GIVE_UP_MS) {
+        } else if (Date.now() - started > limit) {
           setError('The runner did not report back. It may have gone offline.')
           setBusy(''); setCommand('')
         }
       } catch {
-        if (Date.now() - started > GIVE_UP_MS) { setBusy(''); setCommand('') }
+        if (Date.now() - started > limit) { setBusy(''); setCommand('') }
       }
     }, 3000)
     return () => { stop = true; clearInterval(timer) }
+    // `busy` only picks the timeout; re-running on it would restart the clock.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [command, mine])
 
   // Explain rather than vanish. Rendering nothing when there is no usable runner leaves
@@ -112,6 +124,19 @@ export default function FlociControl({ projectId, runners, you }: {
         </span>
       </Shell>
     )
+  }
+
+  const populate = async () => {
+    if (!mine) return
+    setBusy('populate')
+    setError('')
+    try {
+      const { data } = await qaApi.populateEmulators(projectId, mine.name)
+      setCommand(data.commandId)
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Could not ask the runner to populate.')
+      setBusy('')
+    }
   }
 
   const act = async (action: 'start' | 'stop') => {
@@ -146,10 +171,23 @@ export default function FlociControl({ projectId, runners, you }: {
 
         {running && (
           <button
+            onClick={populate}
+            disabled={!!busy}
+            title="Boots your app once against this emulator so it creates its resources"
+            style={{ ...linkBtn, marginLeft: 'auto',
+                     cursor: busy ? 'default' : 'pointer' }}>
+            {busy === 'populate' ? <Loader2 size={10} className="animate-spin" />
+                                 : <Sparkles size={10} />}
+            {busy === 'populate' ? 'populating…' : 'Populate'}
+          </button>
+        )}
+
+        {running && (
+          <button
             onClick={() => setShowTerminal(v => !v)}
             title={showTerminal ? 'Hide the emulator output'
                                 : 'Watch what the emulator is printing'}
-            style={{ ...linkBtn, marginLeft: 'auto',
+            style={{ ...linkBtn,
                      color: showTerminal ? 'var(--color-text)'
                                          : 'var(--color-text-secondary)' }}>
             <Terminal size={10} /> {showTerminal ? 'Hide terminal' : 'Terminal'}
@@ -178,7 +216,14 @@ export default function FlociControl({ projectId, runners, you }: {
       </div>
 
       {/* Says WHY it is not instant, rather than leaving a long spinner unexplained. */}
-      {!!busy && (
+      {busy === 'populate' ? (
+        <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: 0,
+                    lineHeight: 1.6 }}>
+          Booting your app on {runnerLabel(mine, you)} so its startup code creates the
+          resources. The first time also installs its dependencies, so this can take
+          several minutes.
+        </p>
+      ) : !!busy && (
         <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: 0,
                     lineHeight: 1.6 }}>
           Asked {runnerLabel(mine, you)} to {busy}. It picks up requests on its next

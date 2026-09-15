@@ -480,6 +480,12 @@ export const qaApi = {
   controlEmulators: (projectId: string, action: 'start' | 'stop', runner: string) =>
     client.post<{ commandId: string; status: string; clouds: string[] }>(
       `/api/qa/emulators/${projectId}/${action}`, { runner }),
+  /** Boot the app under test once against the running emulator so it creates its cloud
+   *  resources. Minutes, not seconds, the first time — it installs the app's
+   *  dependencies on the runner before it can start anything. */
+  populateEmulators: (projectId: string, runner: string) =>
+    client.post<{ commandId: string; status: string; clouds: string[] }>(
+      `/api/qa/emulators/${projectId}/populate`, { runner }),
   /** NIST controls over the project's IaC. Answered by the API from the working copy —
    *  no runner, no podman, no round trip. */
   projectPolicy: (projectId: string) =>

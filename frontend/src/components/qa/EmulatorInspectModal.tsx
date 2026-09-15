@@ -191,9 +191,12 @@ export default function EmulatorInspectModal({ runner, cloud, machine, onClose }
               <ResourceTable
                 endpoint={`http://localhost:${PORTS[cloud] ?? 4566}`}
                 resources={result?.resources}
-                emptyReason={'This emulator is running but holds nothing yet. Floci keeps '
-                             + 'state in memory by default, so restarting the container '
-                             + 'empties it.'} />
+                emptyReason={'This emulator is running but holds nothing yet. Aura '
+                             + 'starts the emulator; your application creates the '
+                             + 'resources when it boots. Press Populate on the Floci '
+                             + 'panel to run it once, or run the tests — either fills '
+                             + 'this. Floci also keeps state in memory by default, so '
+                             + 'restarting the container empties it again.'} />
             )}
           </div>
         </motion.div>
