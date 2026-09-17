@@ -116,7 +116,10 @@ export default function SchedulerPage() {
   }
 
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto' }}>
+    // `width: 100%` for the same reason as DashboardPage: this is a flex item in
+    // AppShell's column, and an auto cross-axis margin suppresses the stretch, so
+    // without it the page shrinks to its content and floats in a narrow column.
+    <div style={{ width: '100%', maxWidth: '960px', margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: '28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>

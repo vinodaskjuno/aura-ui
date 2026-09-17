@@ -46,16 +46,18 @@ const POPULATE_GIVE_UP_MS = 900000
  * Renders the same three states the full panel does, including `busy`, so the rail
  * does not claim the emulators are stopped while a start is in flight.
  */
-function FlociSummary({ containers, machine, busy, onOpen }: {
+function FlociSummary({ containers, machine, busy, flociUi, onOpen }: {
   containers: { name: string; cloud?: string; ports?: string }[]
   machine: string
   busy: string
+  flociUi?: { running?: boolean; port?: number }
   onOpen: () => void
 }) {
   const running = containers.length > 0
   const clouds = containers.map(c => c.cloud).filter(Boolean).join(' ')
 
   return (
+    <div style={{ display: 'grid', gap: 'var(--space-1)', minWidth: 0 }}>
     <button
       type="button"
       onClick={onOpen}
@@ -87,6 +89,42 @@ function FlociSummary({ containers, machine, busy, onOpen }: {
       }} />
       <ChevronRight size={12} style={{ color: 'var(--color-muted)', flexShrink: 0 }} />
     </button>
+
+    {/* In the rail rather than in the popup: this opens Floci's OWN console in a new
+        tab, so it is navigation, not a control. Burying a one-click destination behind
+        a dialog you then have to dismiss is the wrong trade — and unlike the seven
+        buttons inside, it needs no room.
+
+        A sibling of the button above, never a child: an <a> inside a <button> is
+        invalid HTML and browsers resolve the nesting in ways that break both.
+
+        Owner-only by construction — the whole component is behind the viewer's own
+        runner — and `localhost` resolves on the machine reading this, which is that
+        same machine. */}
+    {flociUi?.running ? (
+      <a href={`http://localhost:${flociUi.port || 4500}`} target="_blank"
+         rel="noreferrer"
+         style={{ ...linkBtn, justifySelf: 'start', paddingLeft: 'var(--space-2)',
+                  textDecoration: 'none' }}>
+        <ExternalLink size={10} /> Open Floci dashboard
+      </a>
+    ) : running && (
+      /* SAYS WHY, rather than simply not being there.
+
+         This link is the one thing on the panel Aura does not control: the emulators
+         on 4566 are containers Aura starts, but Floci's console on 4500 is a separate
+         process the operator runs, and Aura only probes for it. So with emulators
+         plainly running, the missing link looks like a bug in Aura rather than a
+         process nobody started — which is precisely the "absent vs zero" confusion
+         the status strip exists to prevent. Shown only while the emulators are up,
+         since that is when anyone goes looking for it. */
+      <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-muted)',
+                     paddingLeft: 'var(--space-2)', lineHeight: 1.5 }}>
+        Floci's own console is not running on {machine}. Aura starts the emulators,
+        not the console — start it there to get a link.
+      </span>
+    )}
+    </div>
   )
 }
 
@@ -238,6 +276,7 @@ export default function FlociControl({ projectId, runners, you }: {
         containers={containers}
         machine={runnerLabel(mine, you)}
         busy={busy}
+        flociUi={flociUi}
         onOpen={() => setShowPanel(true)}
       />
 
@@ -356,16 +395,6 @@ export default function FlociControl({ projectId, runners, you }: {
             </div>
           )}
 
-          {flociUi?.running && (
-            /* Only useful because these emulators outlive the run. Owner-only, and the
-               link resolves on the viewer's own machine — which is this one. */
-            <a href={`http://localhost:${flociUi.port || 4500}`} target="_blank"
-               rel="noreferrer"
-               style={{ ...linkBtn, justifySelf: 'start', marginTop: 2,
-                        textDecoration: 'none' }}>
-              <ExternalLink size={10} /> Open Floci dashboard
-            </a>
-          )}
         </div>
       ) : !busy && (
         <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)', margin: 0,

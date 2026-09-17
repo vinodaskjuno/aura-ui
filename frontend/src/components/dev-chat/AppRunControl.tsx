@@ -33,6 +33,16 @@ const GIVE_UP_MS = 900000
 //: The runner reports every ~15s, so anything faster just re-reads the same row.
 const POLL_MS = 5000
 
+//: The runner protocol `app-start` needs. Mirrors `_APP_SESSION_PROTOCOL` in
+//: `routers/qa.py`, which is the side that actually enforces it — this copy exists
+//: only so the button can explain itself BEFORE it is pressed.
+//:
+//: The skew is knowable the moment a runner reports: protocol rides every state
+//: report, ~15s apart. Withholding it until someone clicks and gets a 409 turned a
+//: detectable precondition into a dead end, discovered by whoever pressed the button
+//: rather than by whoever started the process.
+const APP_SESSION_PROTOCOL = 3
+
 export default function AppRunControl({ projectId, runners, you }: {
   projectId: string
   runners: QaRunner[]
@@ -41,6 +51,7 @@ export default function AppRunControl({ projectId, runners, you }: {
   const [busy, setBusy] = useState<'start' | 'stop' | ''>('')
   const [command, setCommand] = useState('')
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [apps, setApps] = useState<QaAppSession[]>([])
   const [ingest, setIngest] = useState<IngestStatus | null>(null)
   const [logs, setLogs] = useState<string[]>([])
@@ -91,19 +102,26 @@ export default function AppRunControl({ projectId, runners, you }: {
     return () => clearInterval(timer)
   }, [command, mine, refresh])
 
+  // `protocol` is absent on a runner that has never reported; treat that as 1, which
+  // is what the server does, rather than as "fine".
+  const speaks = mine ? Number(mine.protocol ?? 1) : 0
+  const tooOld = !!mine && speaks < APP_SESSION_PROTOCOL
+
   const running = apps.filter(a => !a.stale)
   const owned = running.filter(a => !a.ownerId || !you || a.runner === mine?.name)
 
   const start = async () => {
     if (!mine) return
-    setBusy('start'); setError('')
+    setBusy('start'); setError(''); setNotice('')
     try {
       const { data } = await qaApi.startApp(projectId, mine.name, instrument)
       setCommand(data.commandId)
       if (!data.telemetry?.configured && data.telemetry?.skipped) {
-        // Not an error — the app will run. But saying nothing here is how someone
-        // ends up staring at an empty Traces tab with no idea why.
-        setError(data.telemetry.skipped)
+        // A NOTICE, not an error — and it used to be `setError`, which rendered it
+        // amber in the failure slot. The app starts either way; only the tracing env
+        // was withheld. Showing "your app is starting" in the same place and colour
+        // as "your app could not start" is how a working feature reads as broken.
+        setNotice(data.telemetry.skipped)
       }
     } catch (e: any) {
       setBusy('')
@@ -150,9 +168,14 @@ export default function AppRunControl({ projectId, runners, you }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         <button
           type="button"
-          disabled={!!busy}
+          disabled={!!busy || (tooOld && !running.length)}
           onClick={() => act(running.length ? 'stop' : 'start')}
-          style={btn}
+          title={tooOld && !running.length
+            ? `This machine's runner speaks protocol ${speaks}; starting a project needs ${APP_SESSION_PROTOCOL}.`
+            : undefined}
+          style={{ ...btn,
+                   opacity: tooOld && !running.length ? 0.5 : 1,
+                   cursor: tooOld && !running.length ? 'not-allowed' : 'pointer' }}
         >
           {busy ? <Loader2 size={10} className="animate-spin" />
             : running.length ? <Square size={10} /> : <Play size={10} />}
@@ -218,6 +241,24 @@ export default function AppRunControl({ projectId, runners, you }: {
       >
         <pre style={pre}>{logs.length ? logs.join('\n') : 'No output yet.'}</pre>
       </Modal>
+
+      {/* Stated up front, not on failure. The server enforces this and will refuse a
+          start anyway; the point is that the reason is visible to whoever is looking
+          at the panel, at the moment they wonder why the button is greyed, rather
+          than being delivered as a 409 to whoever happens to click. */}
+      {tooOld && !running.length && (
+        <div style={{ ...hint, color: 'var(--color-warning)', lineHeight: 1.5 }}>
+          This machine's runner speaks protocol {speaks}; running a project locally
+          needs {APP_SESSION_PROTOCOL}. It is almost certainly a process that started
+          before this feature existed — restart the agent on{' '}
+          {mine?.machine || 'that machine'}.
+        </div>
+      )}
+
+      {/* Quiet, and visually distinct from a failure. */}
+      {notice && (
+        <div style={{ ...hint, lineHeight: 1.5 }}>{notice}</div>
+      )}
 
       {error && <div style={{ ...hint, color: 'var(--color-warning)' }}>{error}</div>}
       </div>

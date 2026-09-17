@@ -79,6 +79,22 @@ export default function DashboardPage() {
 
   return (
     <div style={{
+      // `width: 100%` is load-bearing, not belt-and-braces.
+      //
+      // AppShell wraps every page in a COLUMN flex container, so this div is a flex
+      // item and its cross axis is horizontal. A flex item with an `auto` cross-axis
+      // margin does not stretch — the auto margin wins over `align-items: stretch` —
+      // so `margin: 0 auto` alone made this box shrink to its CONTENT width and then
+      // centre that. The page rendered as a narrow column with large empty gutters.
+      //
+      // It looked like a per-role bug because it varies with content: an admin's
+      // dashboard has five KPI tiles and two wide tables, so its max-content width
+      // nearly fills the screen; a developer's has four tiles and a sparse list, so
+      // it collapsed to ~650px. Same CSS, different blocks.
+      //
+      // With an explicit width the box takes the full track, `maxWidth` caps it, and
+      // the auto margins centre what is left over — which is what they were for.
+      width: '100%',
       maxWidth: 'var(--content-max)', margin: '0 auto',
       paddingBottom: 'var(--space-12)',
       display: 'flex', flexDirection: 'column', gap: 'var(--space-8)',
