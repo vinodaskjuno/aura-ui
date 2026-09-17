@@ -19,7 +19,7 @@ export default function TokenMetricsBadge({ inputTokens, outputTokens, cost, mod
       display: 'inline-flex', alignItems: 'center', gap: 6,
       padding: '3px 10px', borderRadius: 20,
       background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-      fontSize: 11, color: 'var(--color-muted)', marginTop: 6,
+      fontSize: 'var(--text-caption)', color: 'var(--color-muted)', marginTop: 6,
     }}>
       <ArrowUp size={10} style={{ color: 'var(--color-subtext)' }} />
       <span>{formatTokens(inputTokens)}</span>
@@ -35,7 +35,7 @@ export default function TokenMetricsBadge({ inputTokens, outputTokens, cost, mod
       {model && (
         <>
           <span style={{ color: 'var(--color-border)' }}>·</span>
-          <span style={{ fontSize: 10, color: 'var(--color-muted)' }}>
+          <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-muted)' }}>
             {model.split('.').pop()?.split('-').slice(0, 3).join('-') ?? model}
           </span>
         </>

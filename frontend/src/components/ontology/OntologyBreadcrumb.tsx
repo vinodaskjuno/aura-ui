@@ -1,4 +1,5 @@
 import { ChevronRight } from 'lucide-react'
+import { LAYERS } from '../ui/layers'
 
 interface Props {
   path: string[]
@@ -19,7 +20,7 @@ export default function OntologyBreadcrumb({ path, rootLabel = 'Groups', onNavig
       top: '70px',
       left: '50%',
       transform: 'translateX(-50%)',
-      zIndex: 950,
+      zIndex: LAYERS.FLOATING,
       background: 'rgba(6, 13, 46, 0.95)',
       backdropFilter: 'blur(20px)',
       border: '1px solid rgba(255, 255, 255, 0.15)',

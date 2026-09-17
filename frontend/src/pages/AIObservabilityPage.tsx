@@ -79,9 +79,14 @@ export default function AIObservabilityPage() {
             onChange={e => setProject(e.target.value)}
             style={{ ...input, width: 220 }}
           >
+            {/* The Aura name where the string resolves to a project, the raw string
+                otherwise — badged, so "unlinked" reads as a fact about the traces
+                rather than as a missing name. Demo agents and a customer's own apps
+                are legitimately unlinked and must still be selectable. */}
             {projects.map(p => (
               <option key={p.projectId} value={p.projectId}>
-                {p.projectId} ({p.traceCount})
+                {p.auraName ? `${p.auraName} — ${p.projectId}` : p.projectId}
+                {p.origin === 'unlinked' ? ' · unlinked' : ''} ({p.traceCount})
               </option>
             ))}
           </select>

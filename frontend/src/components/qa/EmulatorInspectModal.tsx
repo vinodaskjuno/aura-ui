@@ -4,6 +4,7 @@ import { Loader2, RefreshCw, X } from 'lucide-react'
 import { qaApi } from '../../api/qa'
 import type { QaEmulatorInventory } from '../../api/qa'
 import ResourceTable from './ResourceTable'
+import { LAYERS } from '../ui/layers'
 
 /**
  * What is inside a running emulator, right now.
@@ -124,7 +125,7 @@ export default function EmulatorInspectModal({ runner, cloud, machine, projectId
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}
-        style={{ position: 'fixed', inset: 0, zIndex: 800, display: 'flex',
+        style={{ position: 'fixed', inset: 0, zIndex: LAYERS.MODAL, display: 'flex',
                  alignItems: 'center', justifyContent: 'center', padding: 24,
                  background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)' }}>
         <motion.div

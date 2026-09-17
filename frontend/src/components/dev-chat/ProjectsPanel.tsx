@@ -118,7 +118,7 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
               <FolderOpen size={15} style={{ color: 'var(--color-primary)' }} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text)' }}>Projects</span>
+              <span style={{ fontSize: 'var(--text-body)', fontWeight: 700, color: 'var(--color-text)' }}>Projects</span>
             </div>
             <div style={{ display: 'flex', gap: 5 }}>
               <button
@@ -134,7 +134,7 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
                 onClick={() => setShowCreate(true)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 4,
-                  padding: '4px 9px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                  padding: '4px 9px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption)', fontWeight: 600,
                   background: 'var(--color-primary)', color: '#fff', border: 'none', cursor: 'pointer',
                 }}
               >
@@ -146,7 +146,7 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
           {/* Search filter */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            padding: '6px 10px', borderRadius: 8,
+            padding: '6px 10px', borderRadius: 'var(--radius-sm)',
             background: 'var(--color-card)', border: '1px solid var(--color-border)',
           }}>
             <Search size={12} style={{ color: 'var(--color-muted)', flexShrink: 0 }} />
@@ -156,7 +156,7 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
               placeholder="Filter projects..."
               style={{
                 flex: 1, background: 'none', border: 'none', outline: 'none',
-                fontSize: 12, color: 'var(--color-text)',
+                fontSize: 'var(--text-body)', color: 'var(--color-text)',
               }}
             />
             {filter && (
@@ -171,11 +171,11 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
         {/* Project list */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
           {loading ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, color: 'var(--color-muted)', fontSize: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, color: 'var(--color-muted)', fontSize: 'var(--text-body)' }}>
               <Loader2 size={14} className="animate-spin" /> Loading...
             </div>
           ) : filtered.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--color-muted)', fontSize: 12 }}>
+            <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--color-muted)', fontSize: 'var(--text-body)' }}>
               <FolderOpen size={22} style={{ margin: '0 auto 8px', opacity: 0.35, display: 'block' }} />
               {filter ? 'No matching projects' : 'No projects yet'}
             </div>
@@ -192,7 +192,7 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onSelect(p) }}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'flex-start', gap: 8,
-                  padding: '9px 10px', borderRadius: 8, marginBottom: 3,
+                  padding: '9px 10px', borderRadius: 'var(--radius-sm)', marginBottom: 3,
                   background: p.projectId === selectedId
                     ? 'color-mix(in srgb, var(--color-primary) 12%, transparent)'
                     : 'none',
@@ -214,11 +214,11 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
               >
                 {/* Icon */}
                 <div style={{
-                  width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                  width: 28, height: 28, borderRadius: 'var(--radius-sm)', flexShrink: 0,
                   background: p.projectId === selectedId ? 'var(--color-primary)' : 'var(--color-card)',
                   border: `1px solid ${p.projectId === selectedId ? 'var(--color-primary)' : 'var(--color-border)'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 11, fontWeight: 800, color: p.projectId === selectedId ? '#fff' : 'var(--color-subtext)',
+                  fontSize: 'var(--text-caption)', fontWeight: 800, color: p.projectId === selectedId ? '#fff' : 'var(--color-subtext)',
                 }}>
                   {p.name.charAt(0).toUpperCase()}
                 </div>
@@ -226,7 +226,7 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
                 {/* Content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
-                    fontSize: 12, fontWeight: 600, color: 'var(--color-text)',
+                    fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text)',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     marginBottom: 3,
                   }}>
@@ -235,19 +235,19 @@ export default function ProjectsPanel({ onSelect, selectedId, onCreateNew,
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                     <StatusBadge status={p.status} />
                     {p.environment && (
-                      <span style={{ fontSize: 9, color: 'var(--color-muted)', fontWeight: 500 }}>
+                      <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-muted)', fontWeight: 500 }}>
                         {p.environment}
                       </span>
                     )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
                     <Clock size={9} style={{ color: 'var(--color-muted)' }} />
-                    <span style={{ fontSize: 10, color: 'var(--color-muted)' }}>{formatDate(p.createdAt)}</span>
+                    <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-muted)' }}>{formatDate(p.createdAt)}</span>
                     {p.repoCount > 0 && (
                       <>
-                        <span style={{ color: 'var(--color-border)', fontSize: 9 }}>·</span>
+                        <span style={{ color: 'var(--color-border)', fontSize: 'var(--text-label)' }}>·</span>
                         <GitBranch size={9} style={{ color: 'var(--color-muted)' }} />
-                        <span style={{ fontSize: 10, color: 'var(--color-muted)' }}>{p.repoCount}</span>
+                        <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-muted)' }}>{p.repoCount}</span>
                       </>
                     )}
                   </div>

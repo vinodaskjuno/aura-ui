@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
+import { LAYERS } from '../ui/layers'
 
 /**
  * A modal wait for a long migration step.
@@ -94,7 +95,7 @@ export default function MigrationThinking({ kind, onHide }: {
       aria-label={HEADING[kind]}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)',
-        backdropFilter: 'blur(2px)', zIndex: 900,
+        backdropFilter: 'blur(2px)', zIndex: LAYERS.MODAL,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
       }}
       // No click-away: the work is not cancellable, and a backdrop that dismisses

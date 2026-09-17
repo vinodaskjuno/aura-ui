@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useSidebarStore, SIDEBAR_RAIL, SIDEBAR_WIDTH } from '../../store/sidebarStore'
 import { LogoMark } from '../ui/Logo'
 import { ALL_NAV_GROUPS } from './navGroups'
+import { LAYERS } from '../ui/layers'
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.045, delayChildren: 0.05 } } }
 const itemAnim = {
@@ -49,7 +50,7 @@ export function Sidebar() {
         width: open ? SIDEBAR_WIDTH : SIDEBAR_RAIL,
         background: 'var(--color-surface)',
         borderRight: '1px solid var(--color-border)',
-        display: 'flex', flexDirection: 'column', zIndex: 50, overflow: 'hidden',
+        display: 'flex', flexDirection: 'column', zIndex: LAYERS.NAV, overflow: 'hidden',
         transition: glide,
         // A hover-expanded rail floats OVER the page rather than pushing it, which is
         // what lets the layout keep reserving only the pinned width.

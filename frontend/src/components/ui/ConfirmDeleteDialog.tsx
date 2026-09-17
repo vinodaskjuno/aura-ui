@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { AlertTriangle, Database, FolderOpen, HardDrive, Loader2, Share2, Trash2 } from 'lucide-react'
 import { projectsApi } from '../../api/projects'
 import type { DeletionPreview } from '../../api/projects'
+import { LAYERS } from './layers'
 
 /**
  * Deleting a project — the confirmation, and the inventory behind it.
@@ -56,7 +57,7 @@ export default function ConfirmDeleteDialog({ projectId, projectName, onCancel, 
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000,
+    <div style={{ position: 'fixed', inset: 0, zIndex: LAYERS.MODAL,
                   background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: 20 }}
@@ -68,7 +69,7 @@ export default function ConfirmDeleteDialog({ projectId, projectName, onCancel, 
                  borderRadius: 14, padding: 24, width: 520, maxHeight: '86vh',
                  overflowY: 'auto', boxShadow: 'var(--shadow-md)' }}>
 
-        <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700,
+        <h3 style={{ margin: '0 0 4px', fontSize: 'var(--text-title)', fontWeight: 700,
                      display: 'flex', alignItems: 'center', gap: 8 }}>
           <Trash2 size={16} color="#ef4444" />
           Delete “{projectName}”?
@@ -105,7 +106,7 @@ export default function ConfirmDeleteDialog({ projectId, projectName, onCancel, 
 
             {preview.excluded.length > 0 && (
               <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                <div style={{ fontSize: 'var(--text-caption)', fontWeight: 700, textTransform: 'uppercase',
                               letterSpacing: '.06em', color: 'var(--color-text-secondary)',
                               marginBottom: 6 }}>
                   Not deleted
@@ -113,7 +114,7 @@ export default function ConfirmDeleteDialog({ projectId, projectName, onCancel, 
                 <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid',
                              gap: 6 }}>
                   {preview.excluded.map((item, i) => (
-                    <li key={i} style={{ fontSize: 11.5, lineHeight: 1.55,
+                    <li key={i} style={{ fontSize: 'var(--text-caption)', lineHeight: 1.55,
                                          color: 'var(--color-text-secondary)' }}>
                       <strong style={{ color: 'var(--color-text)' }}>{item.what}</strong>
                       {item.count ? ` (${item.count})` : ''} — {item.detail}
@@ -145,7 +146,7 @@ export default function ConfirmDeleteDialog({ projectId, projectName, onCancel, 
             </div>
 
             <label style={{ display: 'grid', gap: 6, marginTop: 14 }}>
-              <span style={{ fontSize: 11.5, color: 'var(--color-text-secondary)' }}>
+              <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)' }}>
                 Type <strong style={{ fontFamily: 'var(--font-mono, monospace)',
                                       color: 'var(--color-text)' }}>{phrase}</strong> to
                 confirm
@@ -153,8 +154,8 @@ export default function ConfirmDeleteDialog({ projectId, projectName, onCancel, 
               <input value={typed} onChange={e => setTyped(e.target.value)}
                      disabled={busy || !preview.canDelete}
                      autoFocus
-                     style={{ background: 'var(--color-surface)', fontSize: 12.5,
-                              border: '1px solid var(--color-border)', borderRadius: 7,
+                     style={{ background: 'var(--color-surface)', fontSize: 'var(--text-body)',
+                              border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)',
                               padding: '9px 11px', color: 'var(--color-text)',
                               fontFamily: 'var(--font-mono, monospace)' }} />
             </label>
@@ -162,7 +163,7 @@ export default function ConfirmDeleteDialog({ projectId, projectName, onCancel, 
         )}
 
         {!!error && (
-          <p style={{ fontSize: 12, color: '#ef4444', marginTop: 12, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 'var(--text-body)', color: '#ef4444', marginTop: 12, lineHeight: 1.6 }}>
             {error}
           </p>
         )}
@@ -199,12 +200,12 @@ function Row({ icon, label, value, detail, emphasis }: {
       <span style={{ color: emphasis ? '#ef4444' : 'var(--color-text-secondary)',
                      marginTop: 2 }}>{icon}</span>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 12.5 }}>
+        <div style={{ fontSize: 'var(--text-body)' }}>
           <strong>{label}</strong>{' '}
           <span style={{ color: emphasis ? '#ef4444' : 'var(--color-text)' }}>{value}</span>
         </div>
         {detail && (
-          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)',
+          <div style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)',
                         marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {detail}
           </div>
@@ -240,16 +241,16 @@ function mb(bytes: number): string {
 }
 
 const muted: React.CSSProperties = {
-  fontSize: 12, color: 'var(--color-text-secondary)', display: 'flex',
+  fontSize: 'var(--text-body)', color: 'var(--color-text-secondary)', display: 'flex',
   alignItems: 'center', gap: 6, margin: '14px 0',
 }
 const warn: React.CSSProperties = {
   display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 12,
-  fontSize: 11.5, lineHeight: 1.6, padding: '9px 11px', borderRadius: 8,
+  fontSize: 'var(--text-caption)', lineHeight: 1.6, padding: '9px 11px', borderRadius: 'var(--radius-sm)',
   background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.3)',
   color: '#fcd34d',
 }
 const btn: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
-  borderRadius: 7, fontSize: 12.5, fontWeight: 600, border: 'none', cursor: 'pointer',
+  borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-body)', fontWeight: 600, border: 'none', cursor: 'pointer',
 }

@@ -5,6 +5,7 @@ import {
   ChevronDown, ChevronRight, X, FileCheck, ShieldCheck, ShieldX, ZoomIn,
 } from 'lucide-react'
 import { qaApi, type RunStep, type TestArtifact } from '../../api/qa'
+import { LAYERS } from '../ui/layers'
 
 interface ArtifactViewerProps {
   runId: string
@@ -277,7 +278,7 @@ function ScreenshotLightbox({ screenshots, onClose }: {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 500,
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: LAYERS.MODAL,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
       onClick={onClose}>
       <div style={{ maxWidth: 960, width: '100%' }} onClick={e => e.stopPropagation()}>

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { X, Send, ClipboardList, Network, MessageSquare, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { getAuditLog, type AuditLogEntry } from '../../api/ontologyUniverse'
+import { LAYERS } from '../ui/layers'
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'tool_start' | 'tool_end' | 'error'
@@ -568,7 +569,7 @@ export default function OntologyMaintainerChat({ onClose, onHighlightNodes, onGr
         const convo = sessionConvoRef.current[convoEntry.auditId] ?? []
         return (
           <div style={{
-            position: 'fixed', inset: 0, zIndex: 999,
+            position: 'fixed', inset: 0, zIndex: LAYERS.MODAL,
             background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}

@@ -12,8 +12,9 @@ import ModelSelector, { getModelById, type ModelOption } from '../components/dev
 import ContextSummaryDialog from '../components/dev-chat/ContextSummaryDialog'
 import TokenMetricsBadge from '../components/dev-chat/TokenMetricsBadge'
 import ProjectsPanel, { type WizardResult } from '../components/dev-chat/ProjectsPanel'
-import FlociControl from '../components/dev-chat/FlociControl'
-import PolicyPanel from '../components/dev-chat/PolicyPanel'
+import ProjectRail from '../components/dev-chat/ProjectRail'
+import { useDevmateRailStore } from '../store/devmateRailStore'
+import ProjectStatusStrip from '../components/dev-chat/ProjectStatusStrip'
 import { useQaRunners } from '../components/qa/useQaRunners'
 import CreateProjectWizard, { type WizardInitialValues } from '../components/dev-chat/CreateProjectWizard'
 import MetricsDashboard from '../components/dev-chat/MetricsDashboard'
@@ -187,42 +188,59 @@ function ToolCard({ tool, projectId, onResolved }: {
 
   const label = TOOL_LABELS[tool.name] ?? tool.name
   const subject = String(tool.input?.file_path ?? tool.input?.directory ?? '')
+  // The project's change ledger, anchored on this file. Built rather than fetched: a
+  // per-card request would be one round trip per tool call in a long conversation.
+  const ledgerHref = projectId && tool.stagedPath
+    ? `/dev-chat?project=${encodeURIComponent(projectId)}&changes=${encodeURIComponent(tool.stagedPath)}`
+    : ''
 
   return (
     <div style={{
-      margin: '6px 0 6px 34px', borderRadius: 8, overflow: 'hidden',
+      margin: '6px 0 6px 34px', borderRadius: 'var(--radius-sm)', overflow: 'hidden',
       border: `1px solid ${pending ? '#f59e0b55' : 'var(--color-border)'}`,
       background: pending ? '#f59e0b0f' : 'var(--color-card)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 11px' }}>
         <Wrench size={12} color={err ? '#ef4444' : pending ? '#f59e0b' : 'var(--color-muted)'} />
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)' }}>{label}</span>
+        <span style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text)' }}>{label}</span>
         {subject && (
-          <code style={{ fontSize: 11, color: 'var(--color-muted)',
+          <code style={{ fontSize: 'var(--text-caption)', color: 'var(--color-muted)',
             fontFamily: 'var(--font-mono)' }}>{subject}</code>
         )}
         <div style={{ flex: 1 }} />
         {!tool.output && (
-          <span style={{ fontSize: 10.5, color: 'var(--color-muted)' }}>running…</span>
+          <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-muted)' }}>running…</span>
         )}
         {tool.applied && (
-          <span style={{ fontSize: 10.5, fontWeight: 700,
+          <span style={{ fontSize: 'var(--text-caption)', fontWeight: 700,
             color: tool.applied === 'applied' ? '#10b981' : 'var(--color-muted)' }}>
             {tool.applied === 'applied' ? 'APPLIED' : 'DISCARDED'}
           </span>
         )}
+        {/* Where this decision went. The decision itself has been recorded since
+            apply/discard started writing — path, plus and minus lines, who, when, and
+            the session — but this chip lives in React state only, so reloading or
+            reopening the conversation loses it: `getChatSession` returns messages, not
+            tool events. The ledger is the durable record, and this is the way to it. */}
+        {tool.applied && ledgerHref && (
+          <a href={ledgerHref}
+             title="This change in the project's record: when it was decided, by whom, and which commit carried it."
+             style={{ fontSize: 'var(--text-label)', color: '#6366f1', textDecoration: 'none' }}>
+            trace
+          </a>
+        )}
         {pending && (
-          <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 4,
+          <span style={{ fontSize: 'var(--text-label)', fontWeight: 700, padding: '1px 7px', borderRadius: 'var(--radius-sm)',
             background: '#f59e0b22', color: '#f59e0b' }}>AWAITING APPROVAL</span>
         )}
       </div>
 
       {err && (
-        <div style={{ padding: '0 11px 9px', fontSize: 11.5, color: '#ef4444' }}>{err}</div>
+        <div style={{ padding: '0 11px 9px', fontSize: 'var(--text-caption)', color: '#ef4444' }}>{err}</div>
       )}
 
       {tool.diff && (
-        <pre style={{ margin: 0, padding: '9px 11px', fontSize: 11, lineHeight: 1.55,
+        <pre style={{ margin: 0, padding: '9px 11px', fontSize: 'var(--text-caption)', lineHeight: 1.55,
           overflowX: 'auto', background: 'var(--color-surface)',
           borderTop: '1px solid var(--color-border)', fontFamily: 'var(--font-mono)' }}>
           {tool.diff.split('\n').map((line, i) => (
@@ -239,18 +257,18 @@ function ToolCard({ tool, projectId, onResolved }: {
         <div style={{ display: 'flex', gap: 7, padding: '9px 11px',
           borderTop: '1px solid var(--color-border)' }}>
           <button onClick={() => act('applied')} disabled={busy !== null}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5,
-              fontWeight: 600, padding: '5px 12px', borderRadius: 6, border: 'none',
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 'var(--text-caption)',
+              fontWeight: 600, padding: '5px 12px', borderRadius: 'var(--radius-sm)', border: 'none',
               cursor: busy ? 'wait' : 'pointer', background: '#10b981', color: '#fff' }}>
             <Check size={12} /> Apply
           </button>
           <button onClick={() => act('discarded')} disabled={busy !== null}
-            style={{ fontSize: 11.5, fontWeight: 600, padding: '5px 12px', borderRadius: 6,
+            style={{ fontSize: 'var(--text-caption)', fontWeight: 600, padding: '5px 12px', borderRadius: 'var(--radius-sm)',
               cursor: busy ? 'wait' : 'pointer', background: 'transparent',
               color: 'var(--color-muted)', border: '1px solid var(--color-border)' }}>
             Discard
           </button>
-          {error && <span style={{ fontSize: 11, color: '#ef4444', alignSelf: 'center' }}>{error}</span>}
+          {error && <span style={{ fontSize: 'var(--text-caption)', color: '#ef4444', alignSelf: 'center' }}>{error}</span>}
         </div>
       )}
     </div>
@@ -316,6 +334,8 @@ function ChatMessage({ msg }: { msg: ChatMsg }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function DevChatbotPage() {
+  const railOpen = useDevmateRailStore(s => s.open)
+  const toggleRail = useDevmateRailStore(s => s.toggle)
   const navigate = useNavigate()
   const { nodes: ontologyNodes, links: ontologyLinks, loadProjectSubgraph } = useOntologyStore()
 
@@ -352,7 +372,6 @@ export default function DevChatbotPage() {
   const [loadingEditData, setLoadingEditData] = useState(false)
 
   // History side panel (left, ChatGPT-style)
-  const [showHistorySidebar, setShowHistorySidebar] = useState(true)
   const [sidebarSessions, setSidebarSessions] = useState<ChatSession[]>([])
   const [loadingSidebar, setLoadingSidebar] = useState(false)
 
@@ -1045,7 +1064,7 @@ export default function DevChatbotPage() {
             title="Back to DevMate"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 32, height: 32, borderRadius: 8, cursor: 'pointer',
+              width: 32, height: 32, borderRadius: 'var(--radius-sm)', cursor: 'pointer',
               background: 'none', border: '1px solid var(--color-border)',
               color: 'var(--color-muted)', transition: 'all 0.15s', flexShrink: 0,
             }}
@@ -1116,7 +1135,7 @@ export default function DevChatbotPage() {
               title="Edit project / change Git source"
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 32, height: 32, borderRadius: 8, cursor: loadingEditData ? 'wait' : 'pointer',
+                width: 32, height: 32, borderRadius: 'var(--radius-sm)', cursor: loadingEditData ? 'wait' : 'pointer',
                 background: 'none', border: '1px solid var(--color-border)',
                 color: 'var(--color-muted)', transition: 'all 0.15s',
               }}
@@ -1137,8 +1156,8 @@ export default function DevChatbotPage() {
               disabled={syncing || !selectedProject?.id}
               title={syncState.message || 'Clone or update this project\'s repo so the agent can read its files'}
               style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5,
-                fontWeight: 600, padding: '5px 10px', borderRadius: 7,
+                display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 'var(--text-caption)',
+                fontWeight: 600, padding: '5px 10px', borderRadius: 'var(--radius-sm)',
                 cursor: syncing || !selectedProject?.id ? 'not-allowed' : 'pointer',
                 background: 'transparent',
                 color: syncState.ok ? '#10b981' : syncState.error ? '#ef4444' : 'var(--color-muted)',
@@ -1184,38 +1203,37 @@ export default function DevChatbotPage() {
               <RefreshCw size={11} /> Change Project
             </button>
 
-            {/* History sidebar toggle — right side */}
+            {/* Context rail toggle. Reads the persisted store rather than local
+                state: the rail now holds machine controls and policy, not just a list
+                of session names, so closing it is a preference worth remembering. */}
             <button
               type="button"
-              onClick={() => setShowHistorySidebar(v => !v)}
-              title={showHistorySidebar ? 'Hide chat history' : 'Show chat history'}
+              onClick={toggleRail}
+              title={railOpen ? 'Hide the context rail' : 'Show the context rail'}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 32, height: 32, borderRadius: 8, cursor: 'pointer',
-                background: showHistorySidebar ? 'rgba(99,102,241,0.12)' : 'none',
-                border: `1px solid ${showHistorySidebar ? 'rgba(99,102,241,0.35)' : 'var(--color-border)'}`,
-                color: showHistorySidebar ? '#818cf8' : 'var(--color-muted)',
+                width: 32, height: 32, borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                background: railOpen ? 'rgba(99,102,241,0.12)' : 'none',
+                border: `1px solid ${railOpen ? 'rgba(99,102,241,0.35)' : 'var(--color-border)'}`,
+                color: railOpen ? '#818cf8' : 'var(--color-muted)',
                 transition: 'all 0.15s',
               }}
             >
-              {showHistorySidebar ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+              {railOpen ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
             </button>
           </div>
         </div>
 
-        {/* The emulators this project's code implies. Started and stopped by the
-            developer rather than by a test run, so they can be worked against for as
-            long as they are wanted — and so a run adopts them instead of tearing them
-            down. Hidden entirely unless this viewer owns a connected runner: "start a
-            container" has to mean a machine they can see. */}
+        {/* Machine state, on one line. The four panels that used to live here —
+            Floci, Run locally, Observability, Policy — are ambient context for a
+            conversation, not part of it, and they are `flexShrink: 0` in a column
+            where only the message list flexes. They now live in the rail; this strip
+            is what makes that safe, because every state is still visible at a glance
+            and every segment opens the rail on the tab that explains it. */}
         {selectedProject?.id && (
-          <div style={{ marginTop: 10, flexShrink: 0, display: 'grid', gap: 8 }}>
-            <FlociControl projectId={selectedProject.id}
-                          runners={runnersState.runners}
-                          you={runnersState.you} />
-            <PolicyPanel projectId={selectedProject.id}
-                         projectName={selectedProject.name} />
-          </div>
+          <ProjectStatusStrip projectId={selectedProject.id}
+                              runners={runnersState.runners}
+                              you={runnersState.you} />
         )}
 
         {/* Tier-switch banner */}
@@ -1325,106 +1343,111 @@ export default function DevChatbotPage() {
         <style>{`@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} } @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
       </div>
 
-      {/* ── Right history sidebar ────────────────────────────────────────── */}
-      {showHistorySidebar && (
-        <div style={{
-          width: 260, flexShrink: 0, display: 'flex', flexDirection: 'column',
-          background: 'var(--color-surface)',
-          borderLeft: '1px solid var(--color-border)',
-          overflow: 'hidden',
-        }}>
-          {/* Sidebar header */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 12px 10px', borderBottom: '1px solid var(--color-border)', flexShrink: 0,
-          }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-text)' }}>
-              {selectedProject?.name ?? 'History'}
+      {/* ── Right context rail ──────────────────────────────────────────── */}
+      {/* The session list is passed IN rather than rebuilt inside the rail: it is
+          bound to this page's session state and handlers, and moving it would drag
+          all of that with it for no gain. The rail owns the tabs and the two new
+          panes; the history markup below is unchanged. */}
+      <ProjectRail
+        projectId={selectedProject?.id}
+        projectName={selectedProject?.name}
+        runners={runnersState.runners}
+        you={runnersState.you}
+        history={(
+          <>
+            {/* Sidebar header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '12px 12px 10px', borderBottom: '1px solid var(--color-border)', flexShrink: 0,
+            }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-text)' }}>
+                {selectedProject?.name ?? 'History'}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedProject) {
+                    firstMessageSentRef.current = false
+                    startSession(selectedProject.name, selectedProject.id)
+                    setMessages([{
+                      role: 'assistant',
+                      content: `Hi! I'm **DevMate** for **${selectedProject.name}**. Ask me anything about this project.\n\nTip: Click the ✦ **Load Context** button in the header to load the knowledge graph for richer, project-specific answers.`,
+                    }])
+                    setContextLoaded(false)
+                    refreshSessions().catch(() => {})
+                  } else {
+                    setShowWizard(true)
+                  }
+                }}
+                title="New chat"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 26, height: 26, borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                  background: 'none', border: '1px solid var(--color-border)',
+                  color: 'var(--color-muted)', transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-primary)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-primary)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-muted)' }}
+              >
+                <SquarePen size={12} />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedProject) {
-                  firstMessageSentRef.current = false
-                  startSession(selectedProject.name, selectedProject.id)
-                  setMessages([{
-                    role: 'assistant',
-                    content: `Hi! I'm **DevMate** for **${selectedProject.name}**. Ask me anything about this project.\n\nTip: Click the ✦ **Load Context** button in the header to load the knowledge graph for richer, project-specific answers.`,
-                  }])
-                  setContextLoaded(false)
-                  refreshSessions().catch(() => {})
-                } else {
-                  setShowWizard(true)
-                }
-              }}
-              title="New chat"
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 26, height: 26, borderRadius: 6, cursor: 'pointer',
-                background: 'none', border: '1px solid var(--color-border)',
-                color: 'var(--color-muted)', transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-primary)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-primary)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-muted)' }}
-            >
-              <SquarePen size={12} />
-            </button>
-          </div>
-          {/* Session list */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 6px' }}>
-            {loadingSidebar ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '16px 10px', color: 'var(--color-muted)', fontSize: 12 }}>
-                <Loader2 size={13} className="animate-spin" /> Loading…
-              </div>
-            ) : projectSessions.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--color-muted)', fontSize: 12 }}>
-                <MessageSquare size={20} style={{ margin: '0 auto 8px', opacity: 0.3, display: 'block' }} />
-                No sessions for this project
-              </div>
-            ) : sidebarGroups.map(group => (
-              <div key={group.label}>
-                <div style={{
-                  fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px',
-                  color: 'var(--color-muted)', padding: '8px 8px 4px',
-                }}>
-                  {group.label}
+            {/* Session list */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 6px' }}>
+              {loadingSidebar ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '16px 10px', color: 'var(--color-muted)', fontSize: 'var(--text-body)' }}>
+                  <Loader2 size={13} className="animate-spin" /> Loading…
                 </div>
-                {group.items.map(s => {
-                  const isActive = s.sessionId === sessionId.current
-                  return (
-                    <button
-                      key={s.sessionId}
-                      type="button"
-                      onClick={() => handleLoadSession(s)}
-                      style={{
-                        width: '100%', display: 'block', textAlign: 'left',
-                        padding: '7px 8px', borderRadius: 7, marginBottom: 1,
-                        background: isActive ? 'rgba(99,102,241,0.14)' : 'none',
-                        border: isActive ? '1px solid rgba(99,102,241,0.3)' : '1px solid transparent',
-                        cursor: 'pointer', transition: 'background 0.12s, border-color 0.12s',
-                      }}
-                      onMouseEnter={e => { if (!isActive) { (e.currentTarget as HTMLElement).style.background = 'var(--color-hover)' } }}
-                      onMouseLeave={e => { if (!isActive) { (e.currentTarget as HTMLElement).style.background = 'none' } }}
-                    >
-                      <div style={{
-                        fontSize: '12px', fontWeight: isActive ? 700 : 500,
-                        color: isActive ? 'var(--color-text)' : 'var(--color-subtext)',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        lineHeight: 1.4,
-                      }}>
-                        {s.sessionName || s.projectName}
-                      </div>
-                      <div style={{ fontSize: '10px', color: 'var(--color-muted)', marginTop: '1px' }}>
-                        {timeAgo(s.updatedAt)}{s.messageCount > 0 ? ` · ${s.messageCount} msg` : ''}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+              ) : projectSessions.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--color-muted)', fontSize: 'var(--text-body)' }}>
+                  <MessageSquare size={20} style={{ margin: '0 auto 8px', opacity: 0.3, display: 'block' }} />
+                  No sessions for this project
+                </div>
+              ) : sidebarGroups.map(group => (
+                <div key={group.label}>
+                  <div style={{
+                    fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px',
+                    color: 'var(--color-muted)', padding: '8px 8px 4px',
+                  }}>
+                    {group.label}
+                  </div>
+                  {group.items.map(s => {
+                    const isActive = s.sessionId === sessionId.current
+                    return (
+                      <button
+                        key={s.sessionId}
+                        type="button"
+                        onClick={() => handleLoadSession(s)}
+                        style={{
+                          width: '100%', display: 'block', textAlign: 'left',
+                          padding: '7px 8px', borderRadius: 'var(--radius-sm)', marginBottom: 1,
+                          background: isActive ? 'rgba(99,102,241,0.14)' : 'none',
+                          border: isActive ? '1px solid rgba(99,102,241,0.3)' : '1px solid transparent',
+                          cursor: 'pointer', transition: 'background 0.12s, border-color 0.12s',
+                        }}
+                        onMouseEnter={e => { if (!isActive) { (e.currentTarget as HTMLElement).style.background = 'var(--color-hover)' } }}
+                        onMouseLeave={e => { if (!isActive) { (e.currentTarget as HTMLElement).style.background = 'none' } }}
+                      >
+                        <div style={{
+                          fontSize: '12px', fontWeight: isActive ? 700 : 500,
+                          color: isActive ? 'var(--color-text)' : 'var(--color-subtext)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          lineHeight: 1.4,
+                        }}>
+                          {s.sessionName || s.projectName}
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'var(--color-muted)', marginTop: '1px' }}>
+                          {timeAgo(s.updatedAt)}{s.messageCount > 0 ? ` · ${s.messageCount} msg` : ''}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      />
     </div>
     {/* New chat wizard from sidebar */}
     {showWizard && (

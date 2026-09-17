@@ -97,6 +97,13 @@ export interface ThreadRow {
 
 export interface ProjectRow {
   projectId: string; traceCount: number; costUsd: number; lastSeen: string
+  /** The Aura project this string resolves to, when it resolves to one. A trace
+   *  project is whatever the client put in `aura.project` / `service.name`; an Aura
+   *  project is a row with an id and a name. They were never the same thing. */
+  auraName?: string
+  /** `unlinked` means these traces are joined to no Aura project — so nothing in
+   *  DevMate will show them and no per-project spend figure includes them. */
+  origin?: 'linked' | 'unlinked' 
 }
 
 export interface DatasetMeta {
@@ -290,3 +297,24 @@ export const openOpikSession = async () => {
 export const closeOpikSession = async () => {
   await client.delete(`${BASE}/opik-session`)
 }
+
+// ── Is telemetry actually arriving? ──────────────────────────────────────────
+// `/otlp/*` always answers 200 by design: a non-2xx makes an exporter retry in a loop
+// and surfaces telemetry errors inside the caller's own application. The cost is that
+// "nothing has been sent yet" and "your key was refused" are indistinguishable from
+// the wire — and therefore on every screen. This is the one place they are not.
+
+export interface IngestStatus {
+  projectId: string
+  state: 'connected' | 'no-spans-yet' | 'key-refused' | 'disabled' | 'unknown'
+  detail: string
+  /** Spans arrived, but not recently. Still `connected` — an idle app is not broken. */
+  quiet?: boolean
+  lastSpanAt?: string
+  lastSpanCount?: number
+  rejectedCount?: number
+}
+
+export const getIngestStatus = async (projectId: string) =>
+  (await client.get(`${BASE}/ingest-status`, { params: { projectId } }))
+    .data as IngestStatus

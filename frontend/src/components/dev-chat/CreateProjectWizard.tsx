@@ -10,6 +10,7 @@ import { getChatSessions, type ChatSession } from '../../api/chatSessions'
 import { projectsApi } from '../../api/projects'
 import { cloneRepo, uploadFolder } from '../../api/gitOps'
 import { describeApiError } from '../../api/errors'
+import { LAYERS } from '../ui/layers'
 
 /**
  * A folder the user picked in the browser, already filtered.
@@ -185,13 +186,13 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
   }, [])
 
   const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13,
+    width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-body)',
     background: 'var(--color-surface)', border: '1px solid var(--color-border)',
     color: 'var(--color-text)', outline: 'none', boxSizing: 'border-box',
   }
 
   const labelStyle: React.CSSProperties = {
-    fontSize: 11, fontWeight: 600, color: 'var(--color-subtext)',
+    fontSize: 'var(--text-caption)', fontWeight: 600, color: 'var(--color-subtext)',
     textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 5, display: 'block',
   }
 
@@ -390,7 +391,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
               {i < step ? <Check size={13} /> : s.icon}
             </div>
             <span style={{
-              fontSize: 10, fontWeight: i === step ? 700 : 500,
+              fontSize: 'var(--text-label)', fontWeight: i === step ? 700 : 500,
               color: i === step ? 'var(--color-text)' : 'var(--color-muted)',
               whiteSpace: 'nowrap',
             }}>
@@ -418,7 +419,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
     ]
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ fontSize: 12, color: 'var(--color-subtext)' }}>
+        <div style={{ fontSize: 'var(--text-body)', color: 'var(--color-subtext)' }}>
           Connect a code source for context —{' '}
           <span style={{ color: 'var(--color-muted)' }}>optional, you can skip this step.</span>
         </div>
@@ -431,15 +432,15 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
               onClick={() => setRepoChoice(repoChoice === card.id ? null : card.id)}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                padding: '12px 8px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
+                padding: '12px 8px', borderRadius: 'var(--radius-md)', cursor: 'pointer', textAlign: 'center',
                 background: repoChoice === card.id ? `${card.color}18` : 'var(--color-surface)',
                 border: `2px solid ${repoChoice === card.id ? card.color : 'var(--color-border)'}`,
                 transition: 'all 0.15s',
               }}
             >
               <span style={{ color: card.color }}>{card.icon}</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text)' }}>{card.label}</span>
-              <span style={{ fontSize: 10, color: 'var(--color-muted)', lineHeight: 1.3 }}>{card.desc}</span>
+              <span style={{ fontSize: 'var(--text-body)', fontWeight: 700, color: 'var(--color-text)' }}>{card.label}</span>
+              <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-muted)', lineHeight: 1.3 }}>{card.desc}</span>
             </button>
           ))}
         </div>
@@ -523,7 +524,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                   <div key={f.id} style={{
                     display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
                     background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                    borderRadius: 6, fontSize: 12,
+                    borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-body)',
                   }}>
                     <FolderOpen size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
                     <input
@@ -532,7 +533,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                       disabled={f.status === 'uploading' || f.status === 'done'}
                       style={{
                         background: 'transparent', border: 'none', outline: 'none',
-                        color: 'var(--color-text)', fontWeight: 600, fontSize: 12,
+                        color: 'var(--color-text)', fontWeight: 600, fontSize: 'var(--text-body)',
                         width: 110, padding: 0,
                       }}
                     />
@@ -543,7 +544,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                     {f.status === 'uploading' && <Loader2 size={13} className="animate-spin" style={{ color: '#818cf8' }} />}
                     {f.status === 'done' && <Check size={13} style={{ color: '#10b981' }} />}
                     {f.status === 'error' && (
-                      <span title={f.message} style={{ color: '#ef4444', fontSize: 11 }}>failed</span>
+                      <span title={f.message} style={{ color: '#ef4444', fontSize: 'var(--text-caption)' }}>failed</span>
                     )}
                     {f.status === 'ready' && (
                       <button
@@ -566,7 +567,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                 display: 'flex', alignItems: 'center', gap: 7, width: '100%',
                 justifyContent: 'center', padding: '10px 12px',
                 background: 'none', border: '1px dashed var(--color-border)',
-                borderRadius: 6, color: 'var(--color-subtext)', fontSize: 12,
+                borderRadius: 'var(--radius-sm)', color: 'var(--color-subtext)', fontSize: 'var(--text-body)',
                 cursor: 'pointer',
               }}
             >
@@ -574,7 +575,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
               {folders.length === 0 ? 'Browse for a folder…' : 'Add another folder'}
             </button>
 
-            <div style={{ fontSize: 11, color: 'var(--color-muted)', marginTop: 7, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 'var(--text-caption)', color: 'var(--color-muted)', marginTop: 7, lineHeight: 1.5 }}>
               Add each part of the project separately — e.g. <strong>backend</strong> and{' '}
               <strong>frontend</strong>. Dependency and build directories (node_modules,
               dist, .venv) are skipped automatically. The folder is uploaded to the
@@ -582,7 +583,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
             </div>
 
             {localPath && folders.length === 0 && (
-              <div style={{ fontSize: 11, color: 'var(--color-subtext)', marginTop: 7 }}>
+              <div style={{ fontSize: 'var(--text-caption)', color: 'var(--color-subtext)', marginTop: 7 }}>
                 Currently using <code>{localPath}</code> — add a folder above to replace it.
               </div>
             )}
@@ -595,7 +596,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
   // ── Step 1: Knowledge Graph ──────────────────────────────────────────────────
   const renderKnowledgeGraph = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ fontSize: 12, color: 'var(--color-subtext)' }}>
+      <div style={{ fontSize: 'var(--text-body)', color: 'var(--color-subtext)' }}>
         Load the ontology graph as chat context —{' '}
         <span style={{ color: 'var(--color-muted)' }}>optional, you can skip this step.</span>
       </div>
@@ -619,7 +620,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
             onClick={handleLoadGraph}
             disabled={isLoadingGraph || !(graphProjectName.trim() || projectName.trim())}
             style={{
-              padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+              padding: '8px 14px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-body)', fontWeight: 600,
               background: 'var(--color-primary)', color: '#fff', border: 'none',
               cursor: isLoadingGraph ? 'not-allowed' : 'pointer',
               opacity: isLoadingGraph ? 0.7 : 1,
@@ -634,20 +635,20 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
 
       {graphLoaded && ontologyNodes.length === 0 && (
         <div style={{
-          borderRadius: 10, padding: '14px 16px', textAlign: 'center',
+          borderRadius: 'var(--radius-md)', padding: '14px 16px', textAlign: 'center',
           background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)',
         }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 4 }}>
+          <div style={{ fontSize: 'var(--text-body)', fontWeight: 700, color: 'var(--color-text)', marginBottom: 4 }}>
             No graph data found
           </div>
-          <div style={{ fontSize: 11, color: 'var(--color-muted)', marginBottom: 12 }}>
+          <div style={{ fontSize: 'var(--text-caption)', color: 'var(--color-muted)', marginBottom: 12 }}>
             No knowledge graph data exists for &quot;{graphProjectName || projectName}&quot;. You can skip this step.
           </div>
           <button
             type="button"
             onClick={() => setUseKnowledgeGraph(false)}
             style={{
-              padding: '7px 20px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+              padding: '7px 20px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-body)', fontWeight: 600,
               background: 'var(--color-surface)', border: '1px solid var(--color-border)',
               color: 'var(--color-text)', cursor: 'pointer',
             }}
@@ -659,16 +660,16 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
 
       {graphLoaded && ontologyNodes.length > 0 && (
         <div style={{
-          borderRadius: 10, padding: '14px 16px',
+          borderRadius: 'var(--radius-md)', padding: '14px 16px',
           background: 'linear-gradient(135deg, rgba(96,165,250,0.08), rgba(167,139,250,0.08))',
           border: '1px solid rgba(96,165,250,0.25)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>
+              <div style={{ fontSize: 'var(--text-body)', fontWeight: 700, color: 'var(--color-text)' }}>
                 ✦ Graph loaded
               </div>
-              <div style={{ fontSize: 11, color: 'var(--color-subtext)', marginTop: 2 }}>
+              <div style={{ fontSize: 'var(--text-caption)', color: 'var(--color-subtext)', marginTop: 2 }}>
                 {ontologyNodes.length} nodes · {ontologyLinks.length} links
               </div>
             </div>
@@ -677,7 +678,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
               onClick={() => setShowGraphModal(true)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5,
-                padding: '6px 12px', borderRadius: 7, fontSize: 11, fontWeight: 600,
+                padding: '6px 12px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption)', fontWeight: 600,
                 background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)',
                 color: '#60a5fa', cursor: 'pointer', whiteSpace: 'nowrap',
               }}
@@ -690,7 +691,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
               type="button"
               onClick={() => setUseKnowledgeGraph(true)}
               style={{
-                flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                flex: 1, padding: '8px 0', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-body)', fontWeight: 700,
                 background: useKnowledgeGraph === true
                   ? 'linear-gradient(135deg, #4f46e5, #7c3aed)'
                   : 'rgba(79,70,229,0.1)',
@@ -705,7 +706,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
               type="button"
               onClick={() => setUseKnowledgeGraph(false)}
               style={{
-                flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                flex: 1, padding: '8px 0', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-body)', fontWeight: 600,
                 background: useKnowledgeGraph === false ? 'var(--color-surface)' : 'none',
                 border: `1px solid ${useKnowledgeGraph === false ? 'var(--color-subtext)' : 'var(--color-border)'}`,
                 color: useKnowledgeGraph === false ? 'var(--color-text)' : 'var(--color-subtext)',
@@ -723,7 +724,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
   // ── Step 2: Session ──────────────────────────────────────────────────────────
   const renderSession = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ fontSize: 12, color: 'var(--color-subtext)' }}>
+      <div style={{ fontSize: 'var(--text-body)', color: 'var(--color-subtext)' }}>
         Start a new conversation or continue from a past session.
       </div>
 
@@ -732,7 +733,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
           type="button"
           onClick={() => { setSessionChoice('new'); setSessions([]) }}
           style={{
-            padding: '16px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+            padding: '16px 14px', borderRadius: 'var(--radius-md)', cursor: 'pointer', textAlign: 'left',
             background: sessionChoice === 'new' ? 'rgba(79,70,229,0.1)' : 'var(--color-surface)',
             border: `2px solid ${sessionChoice === 'new' ? 'var(--color-primary)' : 'var(--color-border)'}`,
             transition: 'all 0.15s',
@@ -740,9 +741,9 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
             <Plus size={15} style={{ color: sessionChoice === 'new' ? 'var(--color-primary)' : 'var(--color-muted)' }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>New Chat</span>
+            <span style={{ fontSize: 'var(--text-body)', fontWeight: 700, color: 'var(--color-text)' }}>New Chat</span>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--color-muted)', lineHeight: 1.4 }}>
+          <div style={{ fontSize: 'var(--text-caption)', color: 'var(--color-muted)', lineHeight: 1.4 }}>
             Start a fresh conversation
           </div>
         </button>
@@ -751,7 +752,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
           type="button"
           onClick={handleLoadHistory}
           style={{
-            padding: '16px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+            padding: '16px 14px', borderRadius: 'var(--radius-md)', cursor: 'pointer', textAlign: 'left',
             background: sessionChoice === 'history' ? 'rgba(16,185,129,0.08)' : 'var(--color-surface)',
             border: `2px solid ${sessionChoice === 'history' ? '#10b981' : 'var(--color-border)'}`,
             transition: 'all 0.15s',
@@ -759,9 +760,9 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
             <Clock size={15} style={{ color: sessionChoice === 'history' ? '#10b981' : 'var(--color-muted)' }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>Load History</span>
+            <span style={{ fontSize: 'var(--text-body)', fontWeight: 700, color: 'var(--color-text)' }}>Load History</span>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--color-muted)', lineHeight: 1.4 }}>
+          <div style={{ fontSize: 'var(--text-caption)', color: 'var(--color-muted)', lineHeight: 1.4 }}>
             Resume an existing session
           </div>
         </button>
@@ -769,15 +770,15 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
 
       {sessionChoice === 'history' && (
         <div style={{
-          maxHeight: 200, overflowY: 'auto', borderRadius: 10,
+          maxHeight: 200, overflowY: 'auto', borderRadius: 'var(--radius-md)',
           border: '1px solid var(--color-border)', background: 'var(--color-surface)',
         }}>
           {loadingSessions ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 16, color: 'var(--color-muted)', fontSize: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 16, color: 'var(--color-muted)', fontSize: 'var(--text-body)' }}>
               <Loader2 size={13} className="animate-spin" /> Loading sessions…
             </div>
           ) : sessions.length === 0 ? (
-            <div style={{ padding: 16, textAlign: 'center', color: 'var(--color-muted)', fontSize: 12 }}>
+            <div style={{ padding: 16, textAlign: 'center', color: 'var(--color-muted)', fontSize: 'var(--text-body)' }}>
               No past sessions found
             </div>
           ) : (
@@ -797,10 +798,10 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
               >
                 <MessageSquare size={13} style={{ color: selectedSessionId === s.sessionId ? '#10b981' : 'var(--color-muted)', flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.sessionName || s.projectName}
                   </div>
-                  <div style={{ fontSize: 10, color: 'var(--color-muted)', marginTop: 1 }}>
+                  <div style={{ fontSize: 'var(--text-label)', color: 'var(--color-muted)', marginTop: 1 }}>
                     {s.messageCount} msg · {new Date(s.updatedAt).toLocaleDateString()}
                   </div>
                 </div>
@@ -828,7 +829,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
 
       <div
         style={{
-          position: 'fixed', inset: 0, zIndex: 1000,
+          position: 'fixed', inset: 0, zIndex: LAYERS.MODAL,
           background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
         }}
@@ -836,14 +837,14 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
       >
         <div style={{
           background: 'var(--color-card)', border: '1px solid var(--color-border)',
-          borderRadius: 16, padding: '24px 28px', width: '100%', maxWidth: 620,
+          borderRadius: 'var(--radius-lg)', padding: '24px 28px', width: '100%', maxWidth: 620,
           boxShadow: 'var(--shadow-md)', maxHeight: '90vh', overflowY: 'auto',
         }}>
           {/* Modal header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
-                width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                width: 36, height: 36, borderRadius: 'var(--radius-md)', flexShrink: 0,
                 background: 'linear-gradient(135deg, #312e81, #4f46e5, #7c3aed)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 boxShadow: '0 0 14px rgba(124,58,237,0.35)',
@@ -851,8 +852,8 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                 <Plus size={17} color="#fff" />
               </div>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }}>Create Dev Session</div>
-                <div style={{ fontSize: 11, color: 'var(--color-subtext)' }}>Configure your project workspace</div>
+                <div style={{ fontSize: 'var(--text-title)', fontWeight: 700, color: 'var(--color-text)' }}>Create Dev Session</div>
+                <div style={{ fontSize: 'var(--text-caption)', color: 'var(--color-subtext)' }}>Configure your project workspace</div>
               </div>
             </div>
             <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted)', padding: 4 }}>
@@ -888,7 +889,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                 <div style={{
                   position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
                   background: 'var(--color-card)', border: '1px solid var(--color-border)',
-                  borderRadius: 10, marginTop: 4, overflow: 'hidden',
+                  borderRadius: 'var(--radius-md)', marginTop: 4, overflow: 'hidden',
                   boxShadow: 'var(--shadow-md)',
                 }}>
                   {nameResults.map(p => (
@@ -911,9 +912,9 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)' }}>{p.name}</span>
+                      <span style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text)' }}>{p.name}</span>
                       {p.description && (
-                        <span style={{ fontSize: 11, color: 'var(--color-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {p.description}
                         </span>
                       )}
@@ -951,7 +952,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                   type="button"
                   onClick={goBack}
                   style={{
-                    padding: '9px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                    padding: '9px 16px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-body)', fontWeight: 600,
                     background: 'var(--color-surface)', border: '1px solid var(--color-border)',
                     color: 'var(--color-text)', cursor: 'pointer',
                   }}
@@ -969,7 +970,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                     onClick={goNext}
                     disabled={!canProceed}
                     style={{
-                      padding: '9px 16px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+                      padding: '9px 16px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-body)', fontWeight: 500,
                       background: 'none', border: '1px solid var(--color-border)',
                       color: 'var(--color-subtext)', cursor: canProceed ? 'pointer' : 'not-allowed',
                       opacity: canProceed ? 1 : 0.5,
@@ -982,7 +983,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                     onClick={goNext}
                     disabled={!canProceed}
                     style={{
-                      padding: '9px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+                      padding: '9px 18px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-body)', fontWeight: 700,
                       background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', color: '#fff',
                       border: 'none', cursor: canProceed ? 'pointer' : 'not-allowed',
                       opacity: canProceed ? 1 : 0.6,
@@ -994,7 +995,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
               ) : (
                 <>
                 {analysing && (
-                  <span style={{ fontSize: 11.5, color: 'var(--color-subtext)', marginRight: 10 }}>
+                  <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-subtext)', marginRight: 10 }}>
                     Analysing code — the knowledge graph fills in shortly
                   </span>
                 )}
@@ -1003,7 +1004,7 @@ export default function CreateProjectWizard({ onClose, onComplete, initialValues
                   onClick={handleFinish}
                   disabled={!canFinish || submitting}
                   style={{
-                    padding: '9px 22px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+                    padding: '9px 22px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-body)', fontWeight: 700,
                     background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', color: '#fff',
                     border: 'none', cursor: canFinish && !submitting ? 'pointer' : 'not-allowed',
                     opacity: canFinish && !submitting ? 1 : 0.6,

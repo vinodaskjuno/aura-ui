@@ -16,7 +16,7 @@ interface ButtonProps {
 
 export function Button({ children, variant = 'primary', size = 'md', loading, disabled, onClick, type = 'button', style, className = '' }: ButtonProps) {
   const variantClass = variant === 'primary' ? 'ov-btn-primary' : variant === 'ghost' ? 'ov-btn-ghost' : 'ov-btn-danger'
-  const sizeStyle = size === 'sm' ? { padding: '6px 14px', fontSize: 12 } : {}
+  const sizeStyle = size === 'sm' ? { padding: '6px 14px', fontSize: 'var(--text-body)' } : {}
   const dangerStyle = variant === 'danger' ? { background: 'var(--color-danger)', color: '#fff' } : {}
 
   return (

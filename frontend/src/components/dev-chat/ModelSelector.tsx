@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Cpu, ChevronDown, Check, Brain, Bot } from 'lucide-react'
+import { LAYERS } from '../ui/layers'
 
 export interface ModelOption {
   id: string
@@ -79,7 +80,7 @@ export default function ModelSelector({ value, onChange, disabled }: ModelSelect
           padding: '5px 10px', borderRadius: 20,
           background: 'var(--color-card)', border: '1px solid var(--color-border)',
           color: 'var(--color-text)', cursor: disabled ? 'not-allowed' : 'pointer',
-          fontSize: 12, fontWeight: 600, transition: 'all 0.2s',
+          fontSize: 'var(--text-body)', fontWeight: 600, transition: 'all 0.2s',
           opacity: disabled ? 0.6 : 1,
         }}
         onMouseEnter={e => !disabled && ((e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-primary)')}
@@ -94,14 +95,14 @@ export default function ModelSelector({ value, onChange, disabled }: ModelSelect
         <div style={{
           position: 'absolute', top: '100%', right: 0, marginTop: 6,
           background: 'var(--color-card)', border: '1px solid var(--color-border)',
-          borderRadius: 10, boxShadow: 'var(--shadow-md)', zIndex: 200,
+          borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)', zIndex: LAYERS.POPOVER,
           width: 280, overflow: 'hidden',
         }}>
           {MODEL_GROUPS.map(group => (
             <div key={group.group}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                padding: '8px 12px', fontSize: 10, fontWeight: 700,
+                padding: '8px 12px', fontSize: 'var(--text-label)', fontWeight: 700,
                 textTransform: 'uppercase', letterSpacing: '0.8px',
                 background: 'var(--color-surface)',
                 color: 'var(--color-subtext)',
@@ -124,13 +125,13 @@ export default function ModelSelector({ value, onChange, disabled }: ModelSelect
                   onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = m.id === value ? `${TIER_COLORS[m.tier ?? 'balanced']}11` : 'none'}
                 >
                   <span style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text)' }}>{m.label}</div>
-                    <div style={{ fontSize: 10, color: 'var(--color-muted)', marginTop: 1 }}>
+                    <div style={{ fontSize: 'var(--text-body)', fontWeight: 500, color: 'var(--color-text)' }}>{m.label}</div>
+                    <div style={{ fontSize: 'var(--text-label)', color: 'var(--color-muted)', marginTop: 1 }}>
                       {m.contextWindow} context
                     </div>
                   </span>
                   <span style={{
-                    fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 12,
+                    fontSize: 'var(--text-label)', fontWeight: 700, padding: '2px 7px', borderRadius: 'var(--radius-md)',
                     background: `${TIER_COLORS[m.tier ?? 'balanced']}22`,
                     color: TIER_COLORS[m.tier ?? 'balanced'],
                   }}>

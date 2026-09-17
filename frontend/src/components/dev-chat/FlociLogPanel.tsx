@@ -79,7 +79,7 @@ export default function FlociLogPanel({ runner, container, label }: {
   }, [copied])
 
   return (
-    <div style={{ border: '1px solid #30363d', borderRadius: 7, overflow: 'hidden',
+    <div style={{ border: '1px solid #30363d', borderRadius: 'var(--radius-sm)', overflow: 'hidden',
                   background: GROUND }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px',
                     background: CHROME, borderBottom: '1px solid #30363d' }}>
@@ -89,14 +89,14 @@ export default function FlociLogPanel({ runner, container, label }: {
                                    background: c, opacity: 0.9 }} />
           ))}
         </span>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: TEXT,
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption)', color: TEXT,
                        overflow: 'hidden', textOverflow: 'ellipsis',
                        whiteSpace: 'nowrap' }}>
           {container}
         </span>
         {/* The age is not decoration. It is the one thing that stops a 15-second cycle
             being read as a live tail. */}
-        <span style={{ fontSize: 10.5, color: DIM, marginLeft: 'auto', flexShrink: 0 }}>
+        <span style={{ fontSize: 'var(--text-caption)', color: DIM, marginLeft: 'auto', flexShrink: 0 }}>
           {waiting ? 'asking the runner…'
             : age !== null ? `${label} · as of ${age}s ago` : label}
         </span>
@@ -121,8 +121,12 @@ export default function FlociLogPanel({ runner, container, label }: {
              const el = e.currentTarget
              pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24
            }}
-           style={{ maxHeight: 240, overflowY: 'auto', padding: '8px 10px',
-                    fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.65 }}>
+           /* Viewport-relative since this moved into a popup: a fixed 240px
+              window inside a 960px dialog wastes most of the frame, and log
+              output is the one thing people open this to read a lot of. Still
+              bounded — the dialog itself caps at 88vh. */
+           style={{ maxHeight: '60vh', overflowY: 'auto', padding: '8px 10px',
+                    fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption)', lineHeight: 1.65 }}>
         {error ? (
           <span style={{ color: '#f85149' }}>{error}</span>
         ) : !lines.length ? (
@@ -140,7 +144,7 @@ export default function FlociLogPanel({ runner, container, label }: {
       </div>
 
       {logs?.truncated && (
-        <div style={{ padding: '4px 10px', fontSize: 10, color: DIM,
+        <div style={{ padding: '4px 10px', fontSize: 'var(--text-label)', color: DIM,
                       borderTop: '1px solid #30363d' }}>
           Showing the most recent output only — earlier lines were trimmed.
         </div>
@@ -150,7 +154,7 @@ export default function FlociLogPanel({ runner, container, label }: {
 }
 
 const chromeBtn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10,
-  padding: '2px 6px', borderRadius: 4, cursor: 'pointer', flexShrink: 0,
+  display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-label)',
+  padding: '2px 6px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', flexShrink: 0,
   border: '1px solid #30363d', background: 'transparent', color: DIM,
 }

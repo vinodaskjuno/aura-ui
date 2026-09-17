@@ -142,9 +142,14 @@ export default function AccessPage() {
     const menuPermissions = buildMenuPermissions(ALL_NAV_GROUPS)
     const out = new Map<string, typeof menuPermissions>()
     for (const p of menuPermissions) {
-      const list = out.get(p.group) ?? []
+      // Filed under the FIRST group it appears in, deliberately. A permission is one
+      // checkbox, so listing it under each group it spans would render the same
+      // control three times and let an administrator tick a box that is already
+      // ticked elsewhere. Which groups it really spans is shown on the row itself.
+      const primary = p.groups[0] ?? ''
+      const list = out.get(primary) ?? []
       list.push(p)
-      out.set(p.group, list)
+      out.set(primary, list)
     }
     return [...out.entries()]
   }, [])
@@ -291,7 +296,17 @@ export default function AccessPage() {
                                     checked={role.permissions.includes(p.key)}
                                     onChange={() => togglePermission(role.id, p.key)}
                                   />
-                                  <span>{p.menus.join(' · ')}</span>
+                                  <span>
+                                    {p.menus.join(' · ')}
+                                    {/* Named only when it spans more than the section
+                                        it is filed under, so the common case stays
+                                        quiet and the surprising one is stated. */}
+                                    {p.groups.length > 1 && (
+                                      <span style={{ color: 'var(--color-muted)' }}>
+                                        {' '}· in {p.groups.join(', ')}
+                                      </span>
+                                    )}
+                                  </span>
                                 </label>
                               ))}
                             </div>

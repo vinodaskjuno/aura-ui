@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { GitBranch, Plus, RefreshCw, ChevronDown, GitFork, Check } from 'lucide-react'
 import { listBranches, createBranch } from '../../api/gitOps'
+import { LAYERS } from '../ui/layers'
 
 interface BranchPickerProps {
   repoUrl: string
@@ -87,7 +88,7 @@ export default function BranchPicker({ repoUrl, token, value, onChange, disabled
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
           background: 'var(--color-card)', border: '1px solid var(--color-border)',
-          borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 100,
+          borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: LAYERS.POPOVER,
           maxHeight: 220, overflowY: 'auto',
         }}>
           {/* Existing branches */}

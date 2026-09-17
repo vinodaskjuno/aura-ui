@@ -11,6 +11,7 @@ import RunTimeline, { type RunEvent } from './RunTimeline'
 import ProgressBar from './ProgressBar'
 import { progressFromEvents } from './progress'
 import type { RunStep } from '../../api/qa'
+import { LAYERS } from '../ui/layers'
 
 /**
  * Start a run and watch it happen.
@@ -93,7 +94,7 @@ export default function LocalRunView({ projectId, defaultUrl, onClose, onComplet
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 900,
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: LAYERS.MODAL,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
       onClick={onClose}>
       <motion.div initial={{ scale: .97, y: 8 }} animate={{ scale: 1, y: 0 }}

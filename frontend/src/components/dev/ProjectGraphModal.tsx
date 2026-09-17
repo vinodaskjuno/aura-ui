@@ -3,6 +3,7 @@ import ForceGraph from 'force-graph'
 import * as d3 from 'd3'
 import { X } from 'lucide-react'
 import { useGraphTheme } from '../../hooks/useGraphTheme'
+import { LAYERS } from '../ui/layers'
 
 // ── Node colors matching the main OntologyGraph ───────────────────────────────
 const NODE_COLORS: Record<string, string> = {
@@ -162,7 +163,7 @@ export default function ProjectGraphModal({ isOpen, onClose, projectName, nodes,
   return (
     <div
       style={{
-        position: 'fixed', inset: 0, zIndex: 9990,
+        position: 'fixed', inset: 0, zIndex: LAYERS.MODAL,
         background: gt.isDark ? 'rgba(0,0,0,0.82)' : 'rgba(0,0,0,0.45)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         backdropFilter: 'blur(4px)',

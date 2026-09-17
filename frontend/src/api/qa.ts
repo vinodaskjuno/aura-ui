@@ -269,6 +269,32 @@ export interface QaCoverage {
 }
 
 /** A machine that can execute runs, and what it is running right now. */
+/** One app a runner is keeping alive for a project.
+ *
+ *  `url` is a LOOPBACK address on the runner's machine. It resolves on that machine
+ *  and nowhere else, so it must only ever be rendered as a link to its owner — see
+ *  the `mine` check FlociControl already makes for the Floci dashboard. */
+export interface QaAppSession {
+  projectId: string
+  sessionId: string
+  kind: string
+  name: string
+  url: string
+  port: number
+  pid: number
+  compose: boolean
+  healthy: boolean
+  instrumented: boolean
+  /** Why tracing is off, when the reader asked for it and it could not be done. */
+  instrumentationError?: string
+  startedAt: string
+  runner: string
+  ownerId?: string
+  /** The runner has not reported recently. Last-known, never a live claim. */
+  stale?: boolean
+  appsAt?: string
+}
+
 export interface QaRunner {
   name:           string
   lastSeen:       string
@@ -512,6 +538,25 @@ export const qaApi = {
   populateEmulators: (projectId: string, runner: string) =>
     client.post<{ commandId: string; status: string; clouds: string[] }>(
       `/api/qa/emulators/${projectId}/populate`, { runner }),
+  /** Start this project's app on the runner's machine and LEAVE IT RUNNING.
+   *  Different from `populateEmulators` only in lifetime: populate boots the app
+   *  inside a `with` block so its startup creates cloud resources, then stops it.
+   *  Minutes the first time — it installs dependencies before it can start. */
+  startApp: (projectId: string, runner: string, instrument = false) =>
+    client.post<{ commandId: string; status: string; clouds: string[]
+                  telemetry: { configured: boolean; skipped: string } }>(
+      `/api/qa/apps/${projectId}/start`, { runner, instrument }),
+  stopApp: (projectId: string, runner: string) =>
+    client.post<{ commandId: string; status: string }>(
+      `/api/qa/apps/${projectId}/stop`, { runner }),
+  /** Read from the runner's regular state report, not by parking a command — so a
+   *  panel polling this cannot starve the single command slot the log followers and
+   *  every start/stop already contend for. */
+  appState: (projectId: string) =>
+    client.get<{ apps: QaAppSession[] }>(`/api/qa/apps/${projectId}`),
+  appLogs: (projectId: string, runner: string) =>
+    client.get<{ lines: string[]; at: string; kind: string }>(
+      `/api/qa/apps/${projectId}/logs`, { params: { runner } }),
   /** NIST controls over the project's IaC. Answered by the API from the working copy —
    *  no runner, no podman, no round trip. */
   projectPolicy: (projectId: string) =>

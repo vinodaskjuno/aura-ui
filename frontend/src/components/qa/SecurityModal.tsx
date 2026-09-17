@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CheckCircle2, MinusCircle, Shield, X, XCircle } from 'lucide-react'
 import type { QaPolicy, QaPolicyResource } from '../../api/qa'
+import { LAYERS } from '../ui/layers'
 
 /**
  * Every control, every resource, in one place.
@@ -65,7 +66,7 @@ export default function SecurityModal({ policy, project, onClose }: {
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}
-        style={{ position: 'fixed', inset: 0, zIndex: 800, display: 'flex',
+        style={{ position: 'fixed', inset: 0, zIndex: LAYERS.MODAL, display: 'flex',
                  alignItems: 'center', justifyContent: 'center', padding: 24,
                  background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)' }}>
         <motion.div

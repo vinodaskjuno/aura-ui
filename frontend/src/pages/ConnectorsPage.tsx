@@ -9,6 +9,7 @@ import {
   getConnectors, createConnector, updateConnector, deleteConnector, testConnector,
   type Connector, type ConnectorType, type ConnectorCreatePayload,
 } from '../api/connectors'
+import { LAYERS } from '../components/ui/layers'
 
 // ── Connector type definitions ────────────────────────────────────────────────
 
@@ -598,7 +599,7 @@ function AddConnectorModal({ onClose, onAdded }: AddConnectorModalProps) {
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
+      position: 'fixed', inset: 0, zIndex: LAYERS.MODAL,
       background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>

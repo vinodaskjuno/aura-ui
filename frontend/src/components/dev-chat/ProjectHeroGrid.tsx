@@ -112,6 +112,34 @@ function Card({ card, accent, delay, onSelect, onDelete }: {
         }}>{card.detail}</span>
       )}
 
+      {/* Live state, when there is any. A dot rather than a word for "running",
+          because the card's one coloured thing is already the status line and this
+          must not compete with it. The URL is deliberately NOT here: it is loopback
+          on the runner's machine and would point a colleague at their own computer. */}
+      {(card.running || card.telemetry === 'key-refused') && (
+        <span style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          fontSize: 'var(--text-caption)', color: 'var(--color-muted)',
+        }}>
+          {card.running && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%',
+                             background: '#10b981', display: 'inline-block' }} />
+              running locally
+            </span>
+          )}
+          {card.telemetry === 'connected' && card.running && <span>· traced</span>}
+          {card.telemetry === 'key-refused' && (
+            <span style={{ color: '#ef4444' }}
+                  title="A telemetry credential was refused. Its spans were dropped —
+                         the exporter was told 200 so it would not retry in a loop
+                         inside the application.">
+              · telemetry refused
+            </span>
+          )}
+        </span>
+      )}
+
       <span style={{
         marginTop: 'auto', fontSize: 'var(--text-caption)',
         color: 'var(--color-muted)', fontVariantNumeric: 'tabular-nums',

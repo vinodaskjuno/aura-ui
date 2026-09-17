@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Boxes, ExternalLink, Loader2, Play, Search, Sparkles, Square, Terminal }
+import { Boxes, ChevronRight, ExternalLink, Loader2, Play, Search, Sparkles, Square, Terminal }
   from 'lucide-react'
 import { qaApi } from '../../api/qa'
 import type { QaRunner } from '../../api/qa'
 import { runnerLabel } from '../qa/useQaRunners'
 import EmulatorInspectModal from '../qa/EmulatorInspectModal'
 import FlociLogPanel from './FlociLogPanel'
+import { Modal } from '../ui/Overlay'
 
 /**
  * Start this project's cloud emulators, and stop them when you choose.
@@ -34,6 +35,61 @@ const GIVE_UP_MS = 120000
 //: the emulator's window would abandon a perfectly healthy populate minutes early.
 const POPULATE_GIVE_UP_MS = 900000
 
+/**
+ * Floci, in one rail-width line.
+ *
+ * Reports state and nothing else — every control is in the popup. The split is on
+ * "what is true" versus "what can I change", which is the split a rail is good at:
+ * the answer to "are my emulators up?" should cost a glance, and the seven buttons
+ * that act on them should cost a click and then have room.
+ *
+ * Renders the same three states the full panel does, including `busy`, so the rail
+ * does not claim the emulators are stopped while a start is in flight.
+ */
+function FlociSummary({ containers, machine, busy, onOpen }: {
+  containers: { name: string; cloud?: string; ports?: string }[]
+  machine: string
+  busy: string
+  onOpen: () => void
+}) {
+  const running = containers.length > 0
+  const clouds = containers.map(c => c.cloud).filter(Boolean).join(' ')
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={running
+        ? `${containers.length} emulator(s) on ${machine}. Open to populate, inspect or stop them.`
+        : `No emulator running on ${machine}. Open to start one.`}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%',
+        padding: 'var(--space-2)', textAlign: 'left', cursor: 'pointer',
+        border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+        background: 'var(--color-card)', color: 'var(--color-text)', minWidth: 0,
+      }}
+    >
+      <Boxes size={13} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
+      <span style={{ fontSize: 'var(--text-body)', fontWeight: 650, flexShrink: 0 }}>
+        Floci
+      </span>
+      <span style={{
+        fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
+      }}>
+        {busy ? `${busy}…` : running ? clouds || 'running' : 'stopped'}
+      </span>
+      <span aria-hidden style={{
+        marginLeft: 'auto', flexShrink: 0,
+        width: 6, height: 6, borderRadius: '50%',
+        background: busy ? 'var(--color-warning)'
+          : running ? 'var(--color-success)' : 'var(--color-muted)',
+      }} />
+      <ChevronRight size={12} style={{ color: 'var(--color-muted)', flexShrink: 0 }} />
+    </button>
+  )
+}
+
 export default function FlociControl({ projectId, runners, you }: {
   projectId: string
   runners: QaRunner[]
@@ -43,6 +99,7 @@ export default function FlociControl({ projectId, runners, you }: {
   const [command, setCommand] = useState('')
   const [error, setError] = useState('')
   const [inspect, setInspect] = useState('')
+  const [showPanel, setShowPanel] = useState(false)
   // Remembered per project. Someone who keeps the terminal open is watching emulators
   // work and wants it open the next time too; someone who closed it does not want it
   // reappearing on every visit. Wrapped because storage throws in some privacy modes,
@@ -119,7 +176,7 @@ export default function FlociControl({ projectId, runners, you }: {
   if (!mine) {
     return (
       <Shell>
-        <span style={{ fontSize: 11.5, color: 'var(--color-text-secondary)',
+        <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)',
                        lineHeight: 1.6 }}>
           {!online.length
             ? 'No runner is connected, so there is no machine to start emulators on. '
@@ -148,9 +205,12 @@ export default function FlociControl({ projectId, runners, you }: {
   const act = async (action: 'start' | 'stop') => {
     setBusy(action)
     setError('')
-    // Opened on the press, not on success: the panel's own header explains that it is
-    // waiting on the runner's next poll, which is the part of the wait worth seeing.
-    if (action === 'start') setShowTerminal(true)
+    // NOT force-opened any more. Opening it on the press meant one Start left a
+    // ~290px log panel pinned open for that project forever — the preference below
+    // is per-project and persists, so the panel never closed itself again. The
+    // header's own busy line already explains that we are waiting on the runner's
+    // next poll, which is the part of the wait worth seeing; the console is for
+    // when something looks wrong, and that is a decision the reader makes.
     try {
       const { data } = await qaApi.controlEmulators(projectId, action, mine.name)
       setCommand(data.commandId)
@@ -164,12 +224,35 @@ export default function FlociControl({ projectId, runners, you }: {
   const flociUi = mine.flociUi
 
   return (
-    <div style={{ border: '1px solid var(--color-border)', borderRadius: 8,
-                  padding: '10px 12px', display: 'grid', gap: 8 }}>
+    <>
+      {/* In the rail: one line saying what is true. Everything you can DO to the
+          emulators lives in the popup below.
+
+          Floci has seven controls, a container list, a console and a dashboard link —
+          a machine-level concern with more surface than the project-level rail it was
+          crammed into. At 320px the buttons wrapped, the ports and the log lines both
+          overflowed, and the section that is checked most often was the one hardest
+          to read. A summary answers "is it up?" in the rail; the popup answers
+          everything else with room to spare. */}
+      <FlociSummary
+        containers={containers}
+        machine={runnerLabel(mine, you)}
+        busy={busy}
+        onOpen={() => setShowPanel(true)}
+      />
+
+      <Modal
+        open={showPanel}
+        onClose={() => setShowPanel(false)}
+        title="Floci emulators"
+        subtitle={`on ${runnerLabel(mine, you)}`}
+        width="min(960px, 94vw)"
+      >
+    <div style={{ padding: 'var(--space-3)', display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Boxes size={13} style={{ color: 'var(--color-text-secondary)' }} />
-        <span style={{ fontSize: 12, fontWeight: 650 }}>Floci</span>
-        <span style={{ fontSize: 11, color: 'var(--color-text-secondary)',
+        <span style={{ fontSize: 'var(--text-body)', fontWeight: 650 }}>Floci</span>
+        <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)',
                        overflow: 'hidden', textOverflow: 'ellipsis',
                        whiteSpace: 'nowrap' }}>
           on {runnerLabel(mine, you)}
@@ -209,8 +292,8 @@ export default function FlociControl({ projectId, runners, you }: {
             : 'Start the emulators this project’s dependencies imply'}
           style={{ marginLeft: running ? 0 : 'auto', display: 'inline-flex',
                    alignItems: 'center',
-                   gap: 5, fontSize: 11, fontWeight: 600, padding: '4px 10px',
-                   borderRadius: 6, cursor: busy ? 'default' : 'pointer',
+                   gap: 5, fontSize: 'var(--text-caption)', fontWeight: 600, padding: '4px 10px',
+                   borderRadius: 'var(--radius-sm)', cursor: busy ? 'default' : 'pointer',
                    border: `1px solid ${running ? 'rgba(239,68,68,0.3)'
                                                 : 'var(--color-border)'}`,
                    background: running ? 'rgba(239,68,68,0.08)' : 'transparent',
@@ -224,14 +307,14 @@ export default function FlociControl({ projectId, runners, you }: {
 
       {/* Says WHY it is not instant, rather than leaving a long spinner unexplained. */}
       {busy === 'populate' ? (
-        <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: 0,
+        <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)', margin: 0,
                     lineHeight: 1.6 }}>
           Booting your app on {runnerLabel(mine, you)} so its startup code creates the
           resources. The first time also installs its dependencies, so this can take
           several minutes.
         </p>
       ) : !!busy && (
-        <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: 0,
+        <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)', margin: 0,
                     lineHeight: 1.6 }}>
           Asked {runnerLabel(mine, you)} to {busy}. It picks up requests on its next
           poll, so this takes a few seconds.
@@ -239,7 +322,7 @@ export default function FlociControl({ projectId, runners, you }: {
       )}
 
       {!!error && (
-        <p style={{ fontSize: 11.5, color: '#f59e0b', margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 'var(--text-caption)', color: '#f59e0b', margin: 0, lineHeight: 1.6 }}>
           {error}
         </p>
       )}
@@ -248,12 +331,12 @@ export default function FlociControl({ projectId, runners, you }: {
         <div style={{ display: 'grid', gap: 3 }}>
           {containers.map(c => (
             <div key={c.name} style={{ display: 'flex', alignItems: 'center', gap: 8,
-                                       fontSize: 11.5 }}>
+                                       fontSize: 'var(--text-caption)' }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%',
                              background: '#10b981', flexShrink: 0 }} />
               <span style={{ fontWeight: 600, width: 42 }}>{c.cloud || '—'}</span>
               <span style={{ color: 'var(--color-text-secondary)',
-                             fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                             fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption)' }}>
                 {c.ports || ''}
               </span>
               <button onClick={() => setInspect(c.cloud)} style={linkBtn}
@@ -262,6 +345,10 @@ export default function FlociControl({ projectId, runners, you }: {
               </button>
             </div>
           ))}
+          {/* Inline again, because the whole section is now inside a 960px popup and
+              a log line finally has room. It was briefly its own modal, opened from
+              this panel while this panel sat in a 320px rail — a modal inside a modal
+              once the section itself moved, which is a nesting worth not having. */}
           {showTerminal && containers[0] && (
             <div style={{ marginTop: 4 }}>
               <FlociLogPanel runner={mine.name} container={containers[0].name}
@@ -281,7 +368,7 @@ export default function FlociControl({ projectId, runners, you }: {
           )}
         </div>
       ) : !busy && (
-        <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: 0,
+        <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)', margin: 0,
                     lineHeight: 1.6 }}>
           No emulators running on this machine. Aura starts the ones your dependencies
           imply and leaves them up until you stop them — one per cloud, shared by every
@@ -295,16 +382,20 @@ export default function FlociControl({ projectId, runners, you }: {
                                onClose={() => setInspect('')} />
       )}
     </div>
+      </Modal>
+    </>
   )
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ border: '1px solid var(--color-border)', borderRadius: 8,
-                  padding: '10px 12px', display: 'grid', gap: 8 }}>
+    // --radius-md, matching FlociSummary above and the Panel that AppRunControl uses.
+    // These three are siblings in the rail and were rendering at two different radii.
+    <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-2)', display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Boxes size={13} style={{ color: 'var(--color-text-secondary)' }} />
-        <span style={{ fontSize: 12, fontWeight: 650 }}>Floci</span>
+        <span style={{ fontSize: 'var(--text-body)', fontWeight: 650 }}>Floci</span>
       </div>
       {children}
     </div>
@@ -312,8 +403,8 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 const linkBtn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5,
-  padding: '2px 7px', borderRadius: 5, cursor: 'pointer',
+  display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-caption)',
+  padding: '2px 7px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
   border: '1px solid var(--color-border)', background: 'transparent',
   color: 'var(--color-text)',
 }

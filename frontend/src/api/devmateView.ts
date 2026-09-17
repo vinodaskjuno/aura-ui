@@ -26,6 +26,17 @@ export interface HeroCard {
   when: string
   /** How many changes are staged. Drives the attention treatment. */
   pending: number
+  /** This project's app is up on someone's machine right now. Both of these come
+   *  from sources read ONCE for the whole estate, so a card costs nothing extra —
+   *  the hero's six-project cap exists for the expensive per-project calls. */
+  running?: boolean
+  /** Loopback on the RUNNER's machine. Never rendered as a link from a card: it
+   *  resolves somewhere else, or nowhere, on the viewer's own computer. */
+  runningUrl?: string
+  runningOwnerId?: string
+  /** connected | no-spans-yet | key-refused | disabled — the distinction the
+   *  always-200 ingest contract erases everywhere else. */
+  telemetry?: string
 }
 
 export interface DevmateView {
@@ -57,3 +68,62 @@ export interface DevmateView {
 
 export const getDevmateView = () =>
   client.get<DevmateView>('/api/devmate/view').then(r => r.data)
+
+// ── Per project ──────────────────────────────────────────────────────────────
+
+/** One decision on one proposed change.
+ *
+ *  `record_decision` has written all of this since it was added, and until now the
+ *  only reader in the product reduced the lot to a single percentage. */
+export interface ProjectChange {
+  proposalId: string
+  path: string
+  additions: number
+  deletions: number
+  decision: 'applied' | 'discarded' | string
+  decidedAt: string
+  decidedBy: string
+  proposedAt: string
+  sessionId: string
+  userId: string
+  /** Empty on every row written before commits were recorded. The UI says so rather
+   *  than implying the change was never committed. */
+  commitSha: string
+  prUrl: string
+  href: string
+}
+
+export interface ProjectObservabilityView {
+  projectId: string
+  traces: { count: number | null; errorRate?: number | null; costUsd?: number
+            tokens?: number
+            /** False when the window was filled — recent activity, not a total. */
+            exact?: boolean }
+  spend: { costUsd?: number | null; requests?: number; restricted?: boolean }
+  run: { apps: any[]; running: boolean }
+  telemetry: { state: string; detail?: string; quiet?: boolean }
+  /** Policy, summarised. `applicable: false` means the project ships no IaC — which
+   *  is not the same as passing, and must never render as though it were. `null`
+   *  means the section could not be read at all. */
+  checks: {
+    applicable: boolean | null
+    reason?: string
+    passed?: number
+    total?: number
+    resources?: number
+    findings?: number
+    /** Resources no control reads. Never folded into "passing". */
+    notChecked?: number
+  }
+  /** Sections that could not be read. Absent data is never a confident zero. */
+  degraded: string[]
+}
+
+export const getProjectChanges = (projectId: string, limit = 100) =>
+  client.get<{ projectId: string; changes: ProjectChange[] }>(
+    `/api/devmate/projects/${projectId}/changes`, { params: { limit } })
+    .then(r => r.data)
+
+export const getProjectObservability = (projectId: string) =>
+  client.get<ProjectObservabilityView>(
+    `/api/devmate/projects/${projectId}/observability`).then(r => r.data)

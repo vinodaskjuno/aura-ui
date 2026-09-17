@@ -2,6 +2,7 @@ import { pipelineColor, pipelineMeta, relTime } from '../provenance/pipelineMeta
 import { useEffect, useState } from 'react'
 import type { OntologyNode } from '../../types/ontology'
 import { useGraphTheme } from '../../hooks/useGraphTheme'
+import { LAYERS } from '../ui/layers'
 
 interface Props {
   node: OntologyNode | null
@@ -33,7 +34,7 @@ export default function NodeTooltip({ node, mouseX, mouseY, connectionCount }: P
         left: `${mouseX + 15}px`,
         top: `${mouseY + 15}px`,
         pointerEvents: 'none',
-        zIndex: 2000,
+        zIndex: LAYERS.POPOVER,
         background: gt.tooltipBg,
         backdropFilter: 'blur(12px)',
         border: `1px solid ${gt.tooltipBorder}`,

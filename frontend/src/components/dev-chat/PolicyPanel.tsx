@@ -72,7 +72,7 @@ export default function PolicyPanel({ projectId, projectName = '' }:
       <button onClick={() => setOpen(v => !v)}
               style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%',
                        background: 'transparent', border: 'none', padding: 0,
-                       cursor: 'pointer', color: 'var(--color-text)', fontSize: 11.5 }}>
+                       cursor: 'pointer', color: 'var(--color-text)', fontSize: 'var(--text-caption)' }}>
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <span style={{ fontWeight: 600,
                        color: withFindings ? '#f59e0b' : '#10b981' }}>
@@ -99,7 +99,7 @@ export default function PolicyPanel({ projectId, projectName = '' }:
                 title="Every control, every resource, with how to fix each finding"
                 style={{ position: 'absolute', top: 9, right: 10,
                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                         fontSize: 10, padding: '2px 7px', borderRadius: 5,
+                         fontSize: 'var(--text-label)', padding: '2px 7px', borderRadius: 'var(--radius-sm)',
                          cursor: 'pointer', border: '1px solid var(--color-border)',
                          background: 'transparent',
                          color: 'var(--color-text-secondary)' }}>
@@ -114,16 +114,16 @@ export default function PolicyPanel({ projectId, projectName = '' }:
             const clean = !unchecked && r.passed === r.applicable
             return (
               <div key={`${r.file}:${r.name}`}
-                   style={{ display: 'grid', gap: 3, fontSize: 11, lineHeight: 1.55,
+                   style={{ display: 'grid', gap: 3, fontSize: 'var(--text-caption)', lineHeight: 1.55,
                             opacity: unchecked ? 0.72 : 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <Mark ok={unchecked ? null : clean} />
                   <span style={{ fontWeight: 600 }}>{r.name}</span>
-                  <span style={{ fontSize: 10, color: 'var(--color-text-secondary)',
+                  <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-text-secondary)',
                                  fontFamily: 'var(--font-mono)' }}>
                     {r.type.split('::').slice(1).join('::')}
                   </span>
-                  <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 600,
+                  <span style={{ marginLeft: 'auto', fontSize: 'var(--text-caption)', fontWeight: 600,
                                  whiteSpace: 'nowrap',
                                  color: unchecked ? 'var(--color-text-secondary)'
                                         : clean ? '#10b981' : '#ef4444' }}>
@@ -158,13 +158,13 @@ export default function PolicyPanel({ projectId, projectName = '' }:
             )
           }) : policy.controls.map(c => (
             <div key={c.id} style={{ display: 'flex', gap: 7, alignItems: 'flex-start',
-                                     fontSize: 11, lineHeight: 1.55 }}>
+                                     fontSize: 'var(--text-caption)', lineHeight: 1.55 }}>
               <Mark ok={c.passed} />
               <span style={{ minWidth: 0 }}>
                 <span style={{ fontWeight: 600 }}>{c.name.split(' — ')[0]}</span>
                 {/* The file, which this panel used to throw away — two templates
                     otherwise render as identical rows. */}
-                <span style={{ color: 'var(--color-text-secondary)', fontSize: 10,
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-label)',
                                fontFamily: 'var(--font-mono)' }}>{'  '}{c.file}</span>
                 <span style={{ display: 'block', color: 'var(--color-text-secondary)' }}>
                   {c.detail}
@@ -196,13 +196,13 @@ function Mark({ ok }: { ok: boolean | null }) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ border: '1px solid var(--color-border)', borderRadius: 8,
+    <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)',
                   padding: '10px 12px', display: 'grid', gap: 6,
                   position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <ShieldAlert size={13} style={{ color: 'var(--color-text-secondary)' }} />
-        <span style={{ fontSize: 12, fontWeight: 650 }}>Policy</span>
-        <span style={{ fontSize: 10.5, color: 'var(--color-text-secondary)' }}>
+        <span style={{ fontSize: 'var(--text-body)', fontWeight: 650 }}>Policy</span>
+        <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)' }}>
           NIST 800-53 · reads your IaC
         </span>
       </div>
@@ -212,5 +212,5 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 const muted: React.CSSProperties = {
-  fontSize: 11, color: 'var(--color-text-secondary)', lineHeight: 1.6,
+  fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)', lineHeight: 1.6,
 }

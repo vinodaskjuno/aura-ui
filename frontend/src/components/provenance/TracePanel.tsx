@@ -1,4 +1,5 @@
 import { useGraphTheme } from '../../hooks/useGraphTheme'
+import { SectionLabel } from './SectionLabel'
 import TraceTimeline from './TraceTimeline'
 import {
   absTime, isUnattributed, pipelineColor, pipelineMeta, relTime, triggerMeta,
@@ -20,18 +21,6 @@ interface Props {
   error?: string | null
   onOpenRun?: (runId: string) => void
   onRetry?: () => void
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  const gt = useGraphTheme()
-  return (
-    <div style={{
-      fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
-      letterSpacing: '1.2px', color: gt.sectionLabel, marginBottom: 8,
-    }}>
-      {children}
-    </div>
-  )
 }
 
 export default function TracePanel({ data, loading, error, onOpenRun, onRetry }: Props) {

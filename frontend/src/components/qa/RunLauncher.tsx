@@ -13,6 +13,7 @@ import FlociTerminal from './FlociTerminal'
 import { localState, runMachineLabel, runMachineName,
          runnerLabel } from './useQaRunners'
 import { runProgress } from './progress' 
+import { LAYERS } from '../ui/layers'
 
 /**
  * Start a run and watch it happen, from the project list.
@@ -174,7 +175,7 @@ export default function RunLauncher({ project, canRun, reason, runners, you, onC
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}
-      style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex',
+      style={{ position: 'fixed', inset: 0, zIndex: LAYERS.MODAL, display: 'flex',
         alignItems: 'center', justifyContent: 'center', padding: 24,
         background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)' }}>
       <motion.div
@@ -484,7 +485,7 @@ export default function RunLauncher({ project, canRun, reason, runners, you, onC
           {zoom?.screenshotUrl && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setZoom(null)}
-              style={{ position: 'fixed', inset: 0, zIndex: 300, padding: 32,
+              style={{ position: 'fixed', inset: 0, zIndex: LAYERS.MODAL, padding: 32,
                 display: 'flex', flexDirection: 'column', gap: 10,
                 alignItems: 'center', justifyContent: 'center',
                 background: 'rgba(0,0,0,0.85)', cursor: 'zoom-out' }}>

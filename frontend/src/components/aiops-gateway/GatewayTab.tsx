@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import {
   aiopsGatewayApi,
-  type GatewayOverview, type ByModelRow, type ByToolRow,
+  type GatewayOverview, type ByModelRow, type ByToolRow, type ByProjectRow,
   type TimeseriesRow, type Provider, type ProviderHealth,
   type GatewayKey, type AuditLog, type BudgetStatus,
   type ByToolModelRow, type ClaudeCodeUsage,
@@ -88,6 +88,7 @@ function OverviewPane() {
   const [period, setPeriod] = useState('today')
   const [overview, setOverview] = useState<GatewayOverview | null>(null)
   const [byTool, setByTool] = useState<ByToolRow[]>([])
+  const [byProject, setByProject] = useState<ByProjectRow[]>([])
   const [timeseries, setTimeseries] = useState<TimeseriesRow[]>([])
   const [budget, setBudget] = useState<BudgetStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -95,13 +96,16 @@ function OverviewPane() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [ov, bt, ts, bs] = await Promise.all([
+      const [ov, bt, bp, ts, bs] = await Promise.all([
         aiopsGatewayApi.getOverview(period).then(r => r.data),
         aiopsGatewayApi.getByTool('7d').then(r => r.data.byTool),
+        // Non-fatal on its own: this breakdown is newer than the others, and an
+        // environment that has not deployed it yet should still show the rest.
+        aiopsGatewayApi.getByProject('7d').then(r => r.data.byProject).catch(() => []),
         aiopsGatewayApi.getTimeseries('14d').then(r => r.data.timeseries),
         aiopsGatewayApi.getBudgetStatus().then(r => r.data).catch(() => null),
       ])
-      setOverview(ov); setByTool(bt); setTimeseries(ts); setBudget(bs)
+      setOverview(ov); setByTool(bt); setByProject(bp); setTimeseries(ts); setBudget(bs)
     } catch { /* non-fatal */ }
     setLoading(false)
   }, [period])
@@ -186,6 +190,38 @@ function OverviewPane() {
                 <span style={{ fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: color, marginRight: 6 }} />
                   {label}
+                </span>
+                <div style={{ height: 4, borderRadius: 2, background: 'var(--color-border)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', borderRadius: 2, background: color, width: `${pct}%` }} />
+                </div>
+                <span style={{ textAlign: 'right', color: 'var(--color-muted)' }}>{fmtK((row.inputTokens || 0) + (row.outputTokens || 0))} tok</span>
+                <span style={{ textAlign: 'right', fontWeight: 700, color: 'var(--color-text)' }}>{fmt$(row.costUsd)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* By project. The estate view keeps its job — this is a filter onto it, not a
+          second per-project home. Per-project lives in DevMate, and each row links
+          there rather than growing another project page here. */}
+      {byProject.length > 0 && (
+        <div style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 10, padding: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', marginBottom: 10 }}>By Project — Last 7 days</div>
+          {byProject.slice(0, 12).map((row, i) => {
+            const maxCost = byProject[0]?.costUsd || 1
+            const pct = Math.max(2, (row.costUsd / maxCost) * 100)
+            const color = COLORS[i % COLORS.length]
+            // Named, not hidden: spend that declared no project is still spend, and
+            // an unlabelled row is the signal that something is not instrumented.
+            const unattributed = row.projectId === 'unattributed'
+            return (
+              <div key={row.projectId} style={{ display: 'grid', gridTemplateColumns: '160px 1fr 80px 70px', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 12 }}>
+                <span style={{ fontWeight: 600, color: unattributed ? 'var(--color-muted)' : 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: color, marginRight: 6 }} />
+                  {unattributed
+                    ? <span title="These calls declared no project. An app pointed at the gateway by environment alone is attributed by its key — see the project-scoped keys DevMate mints.">unattributed</span>
+                    : <a href={`/dev-chat?project=${encodeURIComponent(row.projectId)}`} style={{ color: 'inherit', textDecoration: 'none' }}>{row.projectId}</a>}
                 </span>
                 <div style={{ height: 4, borderRadius: 2, background: 'var(--color-border)', overflow: 'hidden' }}>
                   <div style={{ height: '100%', borderRadius: 2, background: color, width: `${pct}%` }} />

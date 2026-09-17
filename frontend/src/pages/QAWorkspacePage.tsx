@@ -21,6 +21,7 @@ import { useQaRunners } from '../components/qa/useQaRunners'
 import { Metric, type MetricProps } from '../components/ui/Metric'
 import { pctState, inversePctState } from '../components/ui/metricState'
 import { useAuthStore } from '../store/authStore'
+import { LAYERS } from '../components/ui/layers'
 
 // ── Tab definition ────────────────────────────────────────────────────────────
 type Tab = 'runs' | 'coverage' | 'runner' | 'activity'
@@ -89,7 +90,7 @@ function RunDetailDrawer({ run, projectId, onClose, onRefresh }: {
   return (
     <motion.div initial={{ x: 340, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
       exit={{ x: 340, opacity: 0 }}
-      style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 380, zIndex: 100,
+      style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 380, zIndex: LAYERS.DRAWER,
         background: 'var(--color-surface)', borderLeft: '1px solid var(--color-border)',
         overflowY: 'auto', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-lg)' }}>
 

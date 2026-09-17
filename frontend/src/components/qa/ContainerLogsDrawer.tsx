@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, Copy, Loader2, RefreshCw, X } from 'lucide-react'
 import { FOLLOW_MS, useContainerLogs } from './useContainerLogs'
+import { LAYERS } from '../ui/layers'
 
 /**
  * `podman logs` for one Floci container.
@@ -58,7 +59,7 @@ export default function ContainerLogsDrawer({ runner, container, onClose }: {
         exit={{ x: 560, opacity: 0 }} transition={{ type: 'spring', damping: 26 }}
         style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(560px, 92vw)',
                  background: GROUND, borderLeft: '1px solid #30363d',
-                 zIndex: 800, display: 'flex', flexDirection: 'column' }}>
+                 zIndex: LAYERS.DRAWER, display: 'flex', flexDirection: 'column' }}>
 
         <header style={{ padding: '10px 12px', borderBottom: '1px solid #30363d',
                          background: CHROME }}>

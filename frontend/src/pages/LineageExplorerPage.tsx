@@ -9,6 +9,7 @@ import {
 } from '../components/provenance/pipelineMeta'
 import { getProvenanceSummary, getRuns } from '../api/provenance'
 import type { ProvenanceSummary, RunRecord } from '../api/provenance'
+import { SectionLabel } from '../components/provenance/SectionLabel'
 
 /**
  * Lineage — everything in the graph, and where it came from.
@@ -349,19 +350,6 @@ export default function LineageExplorerPage() {
           )
         })}
       </div>
-    </div>
-  )
-}
-
-function SectionLabel({ children, inline }: { children: React.ReactNode; inline?: boolean }) {
-  const gt = useGraphTheme()
-  return (
-    <div style={{
-      fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase',
-      letterSpacing: '1.4px', color: gt.sectionLabel,
-      marginBottom: inline ? 0 : 10,
-    }}>
-      {children}
     </div>
   )
 }

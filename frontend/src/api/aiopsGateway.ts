@@ -52,6 +52,16 @@ export interface ByToolRow extends UsageMetrics {
   tool: string
 }
 
+/** Spend attributed to one project.
+ *
+ *  The breakdown this router did not have, although `token-usage` has carried a
+ *  `projectId-timestamp-index` GSI for it all along. Rows that declared no project
+ *  arrive as "unattributed" rather than being dropped — a breakdown that silently
+ *  omits a third of the spend is worse than one that names it. */
+export interface ByProjectRow extends UsageMetrics {
+  projectId: string
+}
+
 export interface ByUserRow extends UsageMetrics {
   userId: string
 }
@@ -155,6 +165,7 @@ export const aiopsGatewayApi = {
   getOverview:   (period = 'today') => client.get<GatewayOverview>(`${BASE}/usage/overview?period=${period}`),
   getByModel:    (period = '7d')    => client.get<{ byModel: ByModelRow[] }>(`${BASE}/usage/by-model?period=${period}`),
   getByTool:     (period = '7d')    => client.get<{ byTool: ByToolRow[] }>(`${BASE}/usage/by-tool?period=${period}`),
+  getByProject:  (period = '7d')    => client.get<{ byProject: ByProjectRow[] }>(`${BASE}/usage/by-project?period=${period}`),
   getByUser:     (period = '7d')    => client.get<{ byUser: ByUserRow[] }>(`${BASE}/usage/by-user?period=${period}`),
   getTimeseries: (period = '14d')   => client.get<{ timeseries: TimeseriesRow[] }>(`${BASE}/usage/timeseries?period=${period}`),
   getByToolModel: (period = '7d')    => client.get<{ byToolModel: ByToolModelRow[] }>(`${BASE}/usage/by-tool-model?period=${period}`),

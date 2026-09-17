@@ -8,6 +8,7 @@ import { overlayColorFor } from '../../provenance/overlayPalette'
 import { useOntologyStore } from '../../../store/ontologyStore'
 import { useWorkspaceStore } from '../../../store/workspaceStore'
 import client from '../../../api/client'
+import { LAYERS } from '../../ui/layers'
 
 // ── Category definitions ──────────────────────────────────────────────────────
 
@@ -1419,7 +1420,7 @@ export default function SmartscapeView({ nodes, links, onNodeClick }: Props) {
                 />
                 {projectSearchResults.length > 0 && projectSearch.trim() && (
                   <div style={{
-                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: LAYERS.POPOVER,
                     background: gt.filterBg, border: `1px solid ${gt.panelCardBorder}`,
                     borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
                     maxHeight: 180, overflowY: 'auto', marginTop: 2,

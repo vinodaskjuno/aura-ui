@@ -3,6 +3,7 @@ import {
   CheckCircle2, XCircle, MinusCircle, CloudOff, ChevronRight, ZoomIn, X,
 } from 'lucide-react'
 import type { RunStep } from '../../api/qa'
+import { LAYERS } from '../ui/layers'
 
 /**
  * Every step a run took, in order, with its own status and screenshot.
@@ -26,7 +27,7 @@ const LOOK: Record<RunStep['status'], { color: string; bg: string; icon: React.R
 function Lightbox({ url, caption, onClose }: { url: string; caption: string; onClose: () => void }) {
   return (
     <div onClick={onClose}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 1000,
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: LAYERS.MODAL,
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         justifyContent: 'center', padding: 28, cursor: 'zoom-out' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
