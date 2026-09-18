@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Boxes, ChevronRight, ExternalLink, Loader2, Play, Search, Sparkles, Square, Terminal }
-  from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Boxes, Check, ChevronRight, Copy, ExternalLink, Loader2, Play, Search, Sparkles,
+         Square, Terminal } from 'lucide-react'
 import { qaApi } from '../../api/qa'
-import type { QaRunner } from '../../api/qa'
+import type { QaJob, QaRunner } from '../../api/qa'
 import { runnerLabel } from '../qa/useQaRunners'
 import EmulatorInspectModal from '../qa/EmulatorInspectModal'
 import FlociLogPanel from './FlociLogPanel'
+import ProgressBar from '../qa/ProgressBar'
 import { Modal } from '../ui/Overlay'
 
 /**
@@ -34,6 +35,144 @@ const GIVE_UP_MS = 120000
 //: the runner (up to 900s per directory) before it can even start the app. Judging it by
 //: the emulator's window would abandon a perfectly healthy populate minutes early.
 const POPULATE_GIVE_UP_MS = 900000
+//: Start now includes a first-time image pull on its own 600s budget, which the old
+//: 120s window would have abandoned while the download was still running.
+const START_GIVE_UP_MS = 660000
+
+/** `354122663620` → `3541-2266-3620`, which is exactly how Floci's own ACCOUNT chip
+ *  renders it. Checking that Aura and the console agree should be a glance, not a
+ *  character-by-character comparison. The raw value is what gets copied. */
+function groupAccount(account: string): string {
+  return /^\d{12}$/.test(account) ? account.replace(/(\d{4})(?=\d)/g, '$1-') : account
+}
+
+//: What each job's stages are called, so a bar can list the ones still to come rather
+//: than only the one running. Kept in step with the agent's own `progress.step` calls;
+//: a mismatch costs a label, never correctness — `index`/`total` come from the runner.
+const JOB_STAGES: Record<string, (clouds: string[]) => string[]> = {
+  populate: () => [
+    'Fetching the working copy and installing dependencies',
+    'Locating the app on this machine',
+    'Detecting how the app starts',
+    'Checking the emulator is up',
+    'Starting the app so it creates its resources',
+    'Reading what it created',
+    'Done',
+  ],
+  'emulator-start': clouds => [
+    'Checking podman',
+    ...clouds.flatMap(c => [`Fetching the ${c} emulator image`,
+                            `Starting aura-dev-${c}`,
+                            `Waiting for ${c} to answer on :4566`]),
+  ],
+  'emulator-stop': clouds => [
+    'Checking podman', ...clouds.map(c => `Stopping aura-dev-${c}`),
+  ],
+}
+
+const JOB_TITLE: Record<string, string> = {
+  populate: 'Populating',
+  'emulator-start': 'Starting the emulator',
+  'emulator-stop': 'Stopping the emulator',
+}
+
+/**
+ * One runner job, as a bar and the stages behind it.
+ *
+ * Modelled on `SetupProgress` in RunnerPanel, which already renders a runner-reported
+ * multi-step job exactly this way — same `ProgressBar`, same `Progress` union. A second
+ * pattern for the same idea would be a second thing to keep in step.
+ *
+ * The percentage is stages COMPLETED over total, never an interpolation. Populate's
+ * dominant cost is installing dependencies, which has no progress signal at all, so a
+ * smooth bar would park at 90% on a cold install and finish at 40% on a warm one. It
+ * sits at 14% for most of a populate, and the moving part is the log inside stage one —
+ * which is the honest signal that work is happening.
+ */
+function JobProgress({ job, clouds }: { job: QaJob; clouds: string[] }) {
+  const labels = (JOB_STAGES[job.kind] || (() => []))(clouds.length ? clouds : ['aws'])
+  const failed = !job.active && !job.ok
+  const pct = job.total > 0 ? Math.round((job.index / job.total) * 100) : 0
+  const title = failed ? `${JOB_TITLE[job.kind] || job.kind} failed`
+                       : JOB_TITLE[job.kind] || job.kind
+
+  return (
+    <div style={{ display: 'grid', gap: 6,
+                  padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)',
+                  background: 'var(--color-surface)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+                    fontSize: 'var(--text-caption)' }}>
+        {job.active && <Loader2 size={11} className="animate-spin"
+                                color="var(--color-primary)" />}
+        <span style={{ fontWeight: 650,
+                       color: failed ? 'var(--color-danger)' : undefined }}>{title}</span>
+        {/* A job on a runner that has gone quiet is LAST KNOWN. Without this a frozen
+            bar and a slow one look identical. */}
+        {job.stale && <span style={{ color: 'var(--color-warning)' }}>· last known</span>}
+        {job.total > 0 && (
+          <span style={{ marginLeft: 'auto', color: 'var(--color-text-secondary)',
+                         fontVariantNumeric: 'tabular-nums' }}>
+            {job.index} of {job.total} · {pct}%
+          </span>
+        )}
+      </div>
+
+      <ProgressBar height={4} failing={failed}
+                   progress={job.total > 0
+                     ? { known: true, done: job.index, total: job.total, pct,
+                         label: job.step }
+                     : { known: false, done: job.index, label: job.step }} />
+
+      <div style={{ display: 'grid', gap: 2, fontSize: 'var(--text-label)' }}>
+        {labels.map((label, i) => {
+          const done = i < job.index
+          const now = i === job.index
+          const isFailure = now && failed
+          return (
+            <div key={label + i}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6,
+                            color: done ? 'var(--color-text-secondary)'
+                              : isFailure ? 'var(--color-danger)'
+                              : now ? 'var(--color-text)' : 'var(--color-muted)' }}>
+                <span aria-hidden style={{ width: 9 }}>
+                  {done ? '✓' : isFailure ? '✗' : now ? '◐' : '○'}
+                </span>
+                <span>{label}</span>
+              </div>
+              {/* The stage that failed carries its reason inline rather than one amber
+                  line at the top of the panel: a readiness timeout embeds the container's
+                  own log, and a multi-cloud stop needs the failure pinned to the cloud
+                  that produced it. Monospace and wrapped, never ellipsised. */}
+              {isFailure && !!job.error && (
+                <div style={{ margin: '2px 0 2px 15px', padding: '4px 6px',
+                              borderRadius: 'var(--radius-sm)',
+                              background: 'var(--color-surface-2)',
+                              color: 'var(--color-danger)',
+                              fontFamily: 'var(--font-mono)',
+                              whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {job.error}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Stage one of a populate is minutes long and has no stages of its own, so its
+          own output is what shows the work is alive. */}
+      {job.active && !!job.log?.length && (
+        <div style={{ display: 'grid', gap: 1, marginLeft: 15,
+                      fontFamily: 'var(--font-mono)', fontSize: 'var(--text-label)',
+                      color: 'var(--color-text-secondary)' }}>
+          {job.log.slice(-3).map((line, i) => (
+            <span key={i} style={{ overflow: 'hidden', textOverflow: 'ellipsis',
+                                   whiteSpace: 'nowrap' }}>{line.text}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 /**
  * Floci, in one rail-width line.
@@ -46,11 +185,16 @@ const POPULATE_GIVE_UP_MS = 900000
  * Renders the same three states the full panel does, including `busy`, so the rail
  * does not claim the emulators are stopped while a start is in flight.
  */
-function FlociSummary({ containers, machine, busy, flociUi, onOpen }: {
+function FlociSummary({ containers, machine, busy, flociUi, account, failed, onOpen }: {
   containers: { name: string; cloud?: string; ports?: string }[]
   machine: string
   busy: string
   flociUi?: { running?: boolean; port?: number }
+  account: string
+  /** The last emulator job on this project, if it ended badly. The popup used to be the
+   *  only place a failure showed, so closing it made a refused Start indistinguishable
+   *  from one never pressed. */
+  failed?: QaJob
   onOpen: () => void
 }) {
   const running = containers.length > 0
@@ -61,7 +205,8 @@ function FlociSummary({ containers, machine, busy, flociUi, onOpen }: {
     <button
       type="button"
       onClick={onOpen}
-      title={running
+      title={failed ? `${failed.step || failed.kind} failed: ${failed.error}`
+        : running
         ? `${containers.length} emulator(s) on ${machine}. Open to populate, inspect or stop them.`
         : `No emulator running on ${machine}. Open to start one.`}
       style={{
@@ -79,12 +224,15 @@ function FlociSummary({ containers, machine, busy, flociUi, onOpen }: {
         fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
       }}>
-        {busy ? `${busy}…` : running ? clouds || 'running' : 'stopped'}
+        {busy ? `${busy}…`
+          : failed ? `${failed.kind === 'emulator-stop' ? 'stop' : 'start'} failed`
+          : running ? clouds || 'running' : 'stopped'}
       </span>
       <span aria-hidden style={{
         marginLeft: 'auto', flexShrink: 0,
         width: 6, height: 6, borderRadius: '50%',
         background: busy ? 'var(--color-warning)'
+          : failed ? 'var(--color-danger)'
           : running ? 'var(--color-success)' : 'var(--color-muted)',
       }} />
       <ChevronRight size={12} style={{ color: 'var(--color-muted)', flexShrink: 0 }} />
@@ -102,8 +250,20 @@ function FlociSummary({ containers, machine, busy, flociUi, onOpen }: {
         runner — and `localhost` resolves on the machine reading this, which is that
         same machine. */}
     {flociUi?.running ? (
-      <a href={`http://localhost:${flociUi.port || 4500}`} target="_blank"
-         rel="noreferrer"
+      /* `?account=` because Floci's console reads the account ONLY from localStorage,
+         once, when its bundle loads — it never looks at the URL. The branded page Aura
+         bind-mounts (floci-ui-brand/index.html) reads the parameter in an inline script
+         that runs before that bundle, writes it, and strips it from the address bar.
+
+         Without it the console opens on Floci's DEFAULT account, where this project has
+         nothing, and reports every resource page empty for an emulator that is up and
+         answering — which reads as Aura being broken. */
+      <a href={`http://localhost:${flociUi.port || 4500}/${
+                 account ? `?account=${account}` : ''}`}
+         target="_blank" rel="noreferrer"
+         title={account
+           ? `Opens Floci's console on this project's account, ${groupAccount(account)}`
+           : "Opens Floci's console"}
          style={{ ...linkBtn, justifySelf: 'start', paddingLeft: 'var(--space-2)',
                   textDecoration: 'none' }}>
         <ExternalLink size={10} /> Open Floci dashboard
@@ -124,7 +284,55 @@ function FlociSummary({ containers, machine, busy, flociUi, onOpen }: {
         not the console — start it there to get a link.
       </span>
     )}
+    <AccountLine account={account} />
     </div>
+  )
+}
+
+/**
+ * Which AWS account inside the shared emulator this project's resources live in.
+ *
+ * Nothing in Aura used to say. One Floci emulator serves every project on a machine and
+ * they are separated by account, so a console on the wrong one reports every page empty
+ * for resources that are demonstrably there — and the only way to find the right number
+ * was to derive it by hand from a project id that is itself not shown anywhere.
+ *
+ * ABSENT IS NOT ZERO: a project with no cloud dependency has no account, and naming
+ * Floci's default `000000000000` would point the reader at precisely the wrong one.
+ */
+function AccountLine({ account }: { account: string }) {
+  const [copied, setCopied] = useState(false)
+
+  if (!account) {
+    return (
+      <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-muted)',
+                     paddingLeft: 'var(--space-2)', fontStyle: 'italic' }}>
+        # account unavailable
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      // The RAW value, not the grouped one: every CLI, header and env var wants the
+      // twelve digits, and a reader who pastes `3541-2266-3620` gets Floci's default
+      // account back with no error, which is the failure this whole line exists to end.
+      onClick={() => {
+        navigator.clipboard?.writeText(account).then(
+          () => { setCopied(true); setTimeout(() => setCopied(false), 1200) },
+          () => {},
+        )
+      }}
+      title={`AWS account for this project inside the shared emulator. Click to copy ${account}`}
+      style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none',
+               border: 'none', padding: '2px var(--space-2)', cursor: 'pointer',
+               justifySelf: 'start', color: 'var(--color-text-secondary)',
+               fontSize: 'var(--text-label)', fontFamily: 'var(--font-mono)' }}>
+      <span aria-hidden style={{ color: 'var(--color-muted)' }}>#</span>
+      {groupAccount(account)}
+      {copied ? <Check size={10} color="var(--color-success)" />
+              : <Copy size={10} style={{ color: 'var(--color-muted)' }} />}
+    </button>
   )
 }
 
@@ -138,6 +346,13 @@ export default function FlociControl({ projectId, runners, you }: {
   const [error, setError] = useState('')
   const [inspect, setInspect] = useState('')
   const [showPanel, setShowPanel] = useState(false)
+  //: This project's Floci identity and whatever a runner is doing about it. Polled,
+  //: because the jobs on it are the progress bar's source.
+  const [emulators, setEmulators] = useState<{ account: string; clouds: string[]
+                                               jobs: QaJob[] }>(
+    { account: '', clouds: [], jobs: [] })
+  //: Whether Floci's console answered US, just now. See `probeConsole`.
+  const [consoleUp, setConsoleUp] = useState(false)
   // Remembered per project. Someone who keeps the terminal open is watching emulators
   // work and wants it open the next time too; someone who closed it does not want it
   // reappearing on every visit. Wrapped because storage throws in some privacy modes,
@@ -150,6 +365,29 @@ export default function FlociControl({ projectId, runners, you }: {
     try { localStorage.setItem(`floci.terminal.${projectId}`, showTerminal ? '1' : '0') }
     catch { /* a preference is not worth an error */ }
   }, [showTerminal, projectId])
+
+  /**
+   * Ask Floci's console directly whether it is up.
+   *
+   * The runner already reports this, and that stays the fallback — but it reports on its
+   * own cadence and the panel polls on another, so "I started the console" took 13-45s
+   * to become a link. This is the same machine the page is being read on, and the
+   * console answers cross-origin, so it costs one bounded request and is near-instant.
+   *
+   * The runner's answer is kept because of exactly what `QaRunner.flociUi` documents: a
+   * page served over HTTPS cannot fetch `http://localhost` without tripping
+   * mixed-content. Aura is HTTP today, so this works; the day it is not, this quietly
+   * fails and the runner's report is still there. A failed probe therefore means
+   * "cannot tell from here", never "not running".
+   */
+  const probeConsole = useCallback((port: number) => {
+    const ctl = new AbortController()
+    const timer = setTimeout(() => ctl.abort(), 1500)
+    fetch(`http://localhost:${port}/api/clouds`, { signal: ctl.signal })
+      .then(r => setConsoleUp(r.ok))
+      .catch(() => { /* blocked, refused or aborted — the runner still gets a say */ })
+      .finally(() => clearTimeout(timer))
+  }, [])
 
   // The runner this viewer owns. Ownership rather than "any online runner": Start on
   // someone else's machine is an action the presser cannot observe or undo.
@@ -177,11 +415,50 @@ export default function FlociControl({ projectId, runners, you }: {
   // it is done.
   useEffect(() => { setBusy(b => (b === 'populate' ? b : '')) }, [containers.length])
 
+  // The account and the live jobs. Polled fast only while something is running: the
+  // rest of the time this is a static property of the project and one read is enough.
+  const loadEmulators = useCallback(() => {
+    if (!projectId) return
+    qaApi.getEmulators(projectId)
+      .then(({ data }) => setEmulators({ account: data.account || '',
+                                         clouds: data.clouds || [],
+                                         jobs: data.jobs || [] }))
+      .catch(() => { /* the panel works without it; the account line says unavailable */ })
+  }, [projectId])
+
+  const active = emulators.jobs.some(j => j.active)
+  //: The one to render: whatever is running, else the most recent thing that ended.
+  //: `project_jobs` already sorts active-first then newest, so this is the head of it.
+  const job = emulators.jobs[0]
+  //: An emulator job that ended badly, for the rail. Populate has the popup's own error
+  //: line; Start and Stop are the ones a reader presses and then closes the popup on.
+  const lastFailure = useMemo(
+    () => emulators.jobs.find(j => !j.active && !j.ok && j.kind.startsWith('emulator-')),
+    [emulators.jobs])
+  useEffect(() => {
+    loadEmulators()
+    if (!active && !busy) return
+    const timer = setInterval(loadEmulators, 3000)
+    return () => clearInterval(timer)
+  }, [loadEmulators, active, busy])
+
+  // Probe on mount, on project change, and whenever a command settles — the three
+  // moments the answer can have just changed.
+  useEffect(() => {
+    if (!mine) return
+    probeConsole(mine.flociUi?.port || 4500)
+  }, [mine, probeConsole, busy])
+
   useEffect(() => {
     if (!command || !mine) return
     let stop = false
     const started = Date.now()
-    const limit = busy === 'populate' ? POPULATE_GIVE_UP_MS : GIVE_UP_MS
+    const limit = busy === 'populate' ? POPULATE_GIVE_UP_MS
+      // A first Start pulls the image on its own 600s budget. The old 120s window
+      // abandoned a healthy Start while the download was still running and blamed the
+      // runner for going quiet.
+      : busy === 'start' ? START_GIVE_UP_MS
+      : GIVE_UP_MS
     const timer = setInterval(async () => {
       if (stop) return
       try {
@@ -276,7 +553,11 @@ export default function FlociControl({ projectId, runners, you }: {
         containers={containers}
         machine={runnerLabel(mine, you)}
         busy={busy}
-        flociUi={flociUi}
+        // Either source saying yes is enough: the probe is fast and the runner's report
+        // is the one that survives an HTTPS page. See `probeConsole`.
+        flociUi={{ running: consoleUp || !!flociUi?.running, port: flociUi?.port || 4500 }}
+        account={emulators.account}
+        failed={lastFailure}
         onOpen={() => setShowPanel(true)}
       />
 
@@ -344,8 +625,15 @@ export default function FlociControl({ projectId, runners, you }: {
         </button>
       </div>
 
-      {/* Says WHY it is not instant, rather than leaving a long spinner unexplained. */}
-      {busy === 'populate' ? (
+      {/* The stages, whenever the runner has any to report. It supersedes the prose
+          below while it is running: a bar naming the stage it is on answers "why is
+          this taking so long" better than a sentence explaining that it might. */}
+      {!!job && <JobProgress job={job} clouds={emulators.clouds} />}
+
+      {/* Says WHY it is not instant, rather than leaving a long spinner unexplained.
+          Kept for the gap before the runner picks the command up, and for agents too
+          old to report jobs at all. */}
+      {job?.active ? null : busy === 'populate' ? (
         <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)', margin: 0,
                     lineHeight: 1.6 }}>
           Booting your app on {runnerLabel(mine, you)} so its startup code creates the
@@ -360,8 +648,13 @@ export default function FlociControl({ projectId, runners, you }: {
         </p>
       )}
 
-      {!!error && (
-        <p style={{ fontSize: 'var(--text-caption)', color: '#f59e0b', margin: 0, lineHeight: 1.6 }}>
+      {/* Suppressed while a job carries the same failure: the stage block says WHICH
+          stage failed and pins the reason to it, and repeating the string above it just
+          reads as two problems. Amber became `--color-danger` because a refused Start is
+          an error, not a warning — and because a hard-coded hex is not a token. */}
+      {!!error && !(job && !job.active && !job.ok) && (
+        <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-danger)',
+                    margin: 0, lineHeight: 1.6 }}>
           {error}
         </p>
       )}

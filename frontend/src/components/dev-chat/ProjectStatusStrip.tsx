@@ -50,12 +50,17 @@ export default function ProjectStatusStrip({ projectId, runners, you }: {
   const [telemetry, setTelemetry] = useState<{ state: string; detail?: string } | null>(null)
   const [obs, setObs] = useState<Awaited<ReturnType<typeof getProjectObservability>> | null>(null)
   const [failed, setFailed] = useState<Set<string>>(new Set())
+  //: Which AWS account inside the shared emulator this project's resources live in.
+  //: `null` means we could not ask — not the same as a project that has no account.
+  const [account, setAccount] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     const bad = new Set<string>()
     await Promise.all([
       qaApi.appState(projectId).then(r => setApps(r.data.apps || []))
         .catch(() => { bad.add('apps'); setApps(null) }),
+      qaApi.getEmulators(projectId).then(r => setAccount(r.data.account || ''))
+        .catch(() => { bad.add('account'); setAccount(null) }),
       getIngestStatus(projectId).then(setTelemetry)
         .catch(() => { bad.add('telemetry'); setTelemetry(null) }),
       getProjectObservability(projectId).then(setObs)
@@ -84,6 +89,32 @@ export default function ProjectStatusStrip({ projectId, runners, you }: {
           title: 'Cloud emulators are running on your machine.' }
       : { key: 'floci', glyph: '○', tone: 'idle', tab: 'env', text: 'Floci stopped',
           title: 'No cloud emulator is running. Start one from the Environment tab.' })
+
+  // ── Which account inside that shared emulator ──
+  //
+  // One emulator serves every project on the machine and they are separated by AWS
+  // account, so a console on the wrong one shows every resource page empty for a
+  // project whose resources are demonstrably there. Reported here as well as in the
+  // rail because that is the failure it prevents: you check it against the number
+  // Floci's own console shows, and doing so should not require opening a panel.
+  if (failed.has('account')) {
+    segments.push({ key: 'account', glyph: '◌', tone: 'absent', tab: 'env',
+                    text: 'account unavailable',
+                    title: 'Could not read this project\'s Floci account.' })
+  } else if (account) {
+    segments.push({ key: 'account', glyph: '#', tone: 'idle', tab: 'env',
+                    text: account.replace(/(\d{4})(?=\d)/g, '$1-'),
+                    title: `This project's resources live in AWS account ${account} `
+                           + 'inside the shared emulator. Floci\'s own console must be '
+                           + 'on the same account or it will show nothing.' })
+  } else if (account === '') {
+    // ABSENT IS NOT ZERO: no cloud dependency means no account. Naming Floci's default
+    // `000000000000` would point the reader at exactly the wrong one.
+    segments.push({ key: 'account', glyph: '◌', tone: 'absent', tab: 'env',
+                    text: 'no cloud account',
+                    title: 'This project declares no cloud dependencies, so it has no '
+                           + 'emulator and no account.' })
+  }
 
   // ── The app itself ──
   if (failed.has('apps')) {

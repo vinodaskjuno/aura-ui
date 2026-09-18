@@ -331,6 +331,11 @@ export interface QaRunner {
   /** A setup the USER started on that machine, reported outward as it runs. Aura
    *  never starts one. */
   setup?:         QaRunnerSetup
+  /** What this machine is doing for each project right now, without their logs. */
+  jobs?:          QaJob[]
+  /** Empty means this agent is too old to report jobs — NOT that nothing is running,
+   *  the same distinction `reportsState` draws from `containersAt`. */
+  jobsAt?:        string
 }
 
 export interface QaRunnerHealth {
@@ -356,6 +361,39 @@ export interface QaRunnerSetup {
   index:  number
   total:  number
   log:    { at: string; text: string }[]
+}
+
+/** Long-running work a runner is doing FOR A PROJECT, reported as it goes.
+ *
+ *  The sibling of `QaRunnerSetup` and deliberately the same shape, so the same
+ *  `ProgressBar` renders both. It differs in being project-scoped, which is why it
+ *  carries `projectId` and `commandId` — without the latter a panel cannot tell the
+ *  job belonging to the command it is watching from one left over from a superseded
+ *  command, and `COMMAND_DEDUPE_S` makes that a real case rather than a theoretical one.
+ *
+ *  `index` counts stages COMPLETED, so the bar is `index/total` and never an estimate.
+ *  A failure leaves it where it stopped, which is the whole point: "2 of 7 · Locating
+ *  the app · failed" says more than a bar snapped to 0 or 100. */
+export interface QaJob {
+  kind:      'populate' | 'emulator-start' | 'emulator-stop' | 'app-start' | 'app-stop'
+  projectId: string
+  commandId: string
+  active:    boolean
+  step:      string
+  index:     number
+  total:     number
+  ok:        boolean
+  error:     string
+  startedAt: string
+  endedAt:   string
+  /** Present only on the per-project endpoint. The runners index drops it, because one
+   *  400 KB item is shared by every runner. */
+  log?:      { at: string; text: string }[]
+  runner?:   string
+  machine?:  string
+  /** The runner has gone quiet, so this is LAST KNOWN. A frozen bar and a slow one look
+   *  identical without it. */
+  stale?:    boolean
 }
 
 export interface QaContainer {
@@ -527,16 +565,27 @@ export const qaApi = {
     client.get<{ status: 'pending' | 'ready' | 'failed' | 'superseded'
                  error?: string; reason?: string }>(
       `/api/qa/runners/command/${commandId}`, { params: { runner } }),
+  /** This project's Floci identity, and what any runner is doing about it.
+   *
+   *  `account` is why this exists. One emulator is shared by every project on a machine
+   *  and they are kept apart inside it by AWS account, so a console pointed at Floci's
+   *  default namespace shows every page empty for a project whose resources are up.
+   *  Empty for a project with no cloud dependency — ABSENT IS NOT ZERO, and
+   *  `000000000000` is the exact wrong account to name. */
+  getEmulators: (projectId: string) =>
+    client.get<{ projectId: string; account: string; clouds: string[]
+                 jobs: QaJob[]; staleAfterSeconds: number }>(
+      `/api/qa/emulators/${projectId}`),
   /** Start or stop a project's own emulators, from DevMate. The clouds are derived
    *  server-side from the project's dependencies. */
   controlEmulators: (projectId: string, action: 'start' | 'stop', runner: string) =>
-    client.post<{ commandId: string; status: string; clouds: string[] }>(
+    client.post<{ commandId: string; status: string; clouds: string[]; account: string }>(
       `/api/qa/emulators/${projectId}/${action}`, { runner }),
   /** Boot the app under test once against the running emulator so it creates its cloud
    *  resources. Minutes, not seconds, the first time — it installs the app's
    *  dependencies on the runner before it can start anything. */
   populateEmulators: (projectId: string, runner: string) =>
-    client.post<{ commandId: string; status: string; clouds: string[] }>(
+    client.post<{ commandId: string; status: string; clouds: string[]; account: string }>(
       `/api/qa/emulators/${projectId}/populate`, { runner }),
   /** Start this project's app on the runner's machine and LEAVE IT RUNNING.
    *  Different from `populateEmulators` only in lifetime: populate boots the app
