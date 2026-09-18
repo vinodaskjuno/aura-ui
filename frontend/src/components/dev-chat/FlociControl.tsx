@@ -89,7 +89,8 @@ const JOB_TITLE: Record<string, string> = {
  * sits at 14% for most of a populate, and the moving part is the log inside stage one —
  * which is the honest signal that work is happening.
  */
-function JobProgress({ job, clouds }: { job: QaJob; clouds: string[] }) {
+function JobProgress({ job, clouds, queued = false }:
+                     { job: QaJob; clouds: string[]; queued?: boolean }) {
   const labels = (JOB_STAGES[job.kind] || (() => []))(clouds.length ? clouds : ['aws'])
   const failed = !job.active && !job.ok
   const pct = job.total > 0 ? Math.round((job.index / job.total) * 100) : 0
@@ -109,24 +110,36 @@ function JobProgress({ job, clouds }: { job: QaJob; clouds: string[] }) {
         {/* A job on a runner that has gone quiet is LAST KNOWN. Without this a frozen
             bar and a slow one look identical. */}
         {job.stale && <span style={{ color: 'var(--color-warning)' }}>· last known</span>}
-        {job.total > 0 && (
+        {job.total > 0 && !queued && (
           <span style={{ marginLeft: 'auto', color: 'var(--color-text-secondary)',
                          fontVariantNumeric: 'tabular-nums' }}>
             {job.index} of {job.total} · {pct}%
           </span>
         )}
+        {queued && (
+          <span style={{ marginLeft: 'auto', color: 'var(--color-text-secondary)' }}>
+            queued
+          </span>
+        )}
       </div>
 
+      {/* Indeterminate while queued, and that is the honest shape rather than a
+          shortcut: the runner has not picked the command up, so no stage has run and a
+          bar sitting at 0% would claim work that has not started. ProgressBar's own
+          note makes the same argument for an unclaimed run. */}
       <ProgressBar height={4} failing={failed}
-                   progress={job.total > 0
-                     ? { known: true, done: job.index, total: job.total, pct,
-                         label: job.step }
-                     : { known: false, done: job.index, label: job.step }} />
+                   progress={queued || job.total <= 0
+                     ? { known: false, done: 0, label: job.step }
+                     : { known: true, done: job.index, total: job.total, pct,
+                         label: job.step }} />
 
       <div style={{ display: 'grid', gap: 2, fontSize: 'var(--text-label)' }}>
         {labels.map((label, i) => {
-          const done = i < job.index
-          const now = i === job.index
+          // Queued means NOTHING has started, so no stage is marked as running. The
+          // list is still shown, greyed, because "here is what is about to happen" is
+          // worth more than an empty box while the runner gets to it.
+          const done = !queued && i < job.index
+          const now = !queued && i === job.index
           const isFailure = now && failed
           return (
             <div key={label + i}>
@@ -353,6 +366,19 @@ export default function FlociControl({ projectId, runners, you }: {
     { account: '', clouds: [], jobs: [] })
   //: Whether Floci's console answered US, just now. See `probeConsole`.
   const [consoleUp, setConsoleUp] = useState(false)
+  /**
+   * The command we just asked for, before any runner has said anything about it.
+   *
+   * A command is parked for a pull-based agent, so up to one poll passes before the
+   * job even exists — 15s at the idle report cadence. Rendering nothing for that long
+   * is what made the press feel like it had not registered. This is the request itself,
+   * shown immediately and honestly: the stage list it is ABOUT to run, greyed, under a
+   * sweeping bar that claims no progress, because none has happened.
+   *
+   * It carries the `commandId` the POST returned, so the moment the real job appears
+   * this is dropped rather than racing it.
+   */
+  const [queued, setQueued] = useState<{ kind: QaJob['kind']; commandId: string } | null>(null)
   // Remembered per project. Someone who keeps the terminal open is watching emulators
   // work and wants it open the next time too; someone who closed it does not want it
   // reappearing on every visit. Wrapped because storage throws in some privacy modes,
@@ -429,7 +455,33 @@ export default function FlociControl({ projectId, runners, you }: {
   const active = emulators.jobs.some(j => j.active)
   //: The one to render: whatever is running, else the most recent thing that ended.
   //: `project_jobs` already sorts active-first then newest, so this is the head of it.
-  const job = emulators.jobs[0]
+  const realJob = emulators.jobs[0]
+
+  // The runner has spoken about the command we queued, so the placeholder has served
+  // its purpose. Matched on `commandId` rather than kind: a dedupe window can hand back
+  // a different command's id, and a stale placeholder over a live job is worse than
+  // none at all.
+  useEffect(() => {
+    if (queued && emulators.jobs.some(j => j.commandId === queued.commandId)) {
+      setQueued(null)
+    }
+  }, [emulators.jobs, queued])
+
+  //: The request, shaped like the job it is about to become. `total` is derived from the
+  //: same stage lists the real job is rendered with, so the bar does not resize when the
+  //: runner takes over.
+  const queuedJob: QaJob | null = useMemo(() => {
+    if (!queued) return null
+    const clouds = emulators.clouds.length ? emulators.clouds : ['aws']
+    const total = (JOB_STAGES[queued.kind] || (() => []))(clouds).length
+    return {
+      kind: queued.kind, projectId, commandId: queued.commandId, active: true,
+      step: 'Waiting for the runner to pick this up', index: 0, total,
+      ok: false, error: '', startedAt: '', endedAt: '',
+    }
+  }, [queued, emulators.clouds, projectId])
+
+  const job = realJob || queuedJob
   //: An emulator job that ended badly, for the rail. Populate has the popup's own error
   //: line; Start and Stop are the ones a reader presses and then closes the popup on.
   const lastFailure = useMemo(
@@ -466,7 +518,10 @@ export default function FlociControl({ projectId, runners, you }: {
         if (stop) return
         if (data.status === 'failed') {
           setError(data.error || 'The runner could not carry that out.')
-          setBusy(''); setCommand('')
+          // The placeholder goes with it. A request that was refused before any stage
+          // ran has no progress to show, and leaving a sweeping bar under an error
+          // reads as "still working" next to "it failed".
+          setBusy(''); setCommand(''); setQueued(null)
         } else if (data.status === 'ready' || data.status === 'superseded') {
           // For start/stop, success is confirmed by the container list the next state
           // report brings. Populate changes no containers, so this IS its completion.
@@ -474,7 +529,7 @@ export default function FlociControl({ projectId, runners, you }: {
           setCommand('')
         } else if (Date.now() - started > limit) {
           setError('The runner did not report back. It may have gone offline.')
-          setBusy(''); setCommand('')
+          setBusy(''); setCommand(''); setQueued(null)
         }
       } catch {
         if (Date.now() - started > limit) { setBusy(''); setCommand('') }
@@ -511,9 +566,12 @@ export default function FlociControl({ projectId, runners, you }: {
     try {
       const { data } = await qaApi.populateEmulators(projectId, mine.name)
       setCommand(data.commandId)
+      // Straight away, so the press has a visible consequence rather than a spinner
+      // for the poll the runner has yet to make.
+      setQueued({ kind: 'populate', commandId: data.commandId })
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Could not ask the runner to populate.')
-      setBusy('')
+      setBusy(''); setQueued(null)
     }
   }
 
@@ -529,9 +587,11 @@ export default function FlociControl({ projectId, runners, you }: {
     try {
       const { data } = await qaApi.controlEmulators(projectId, action, mine.name)
       setCommand(data.commandId)
+      setQueued({ kind: action === 'start' ? 'emulator-start' : 'emulator-stop',
+                  commandId: data.commandId })
     } catch (e: any) {
       setError(e?.response?.data?.detail || `Could not ${action} the emulators.`)
-      setBusy('')
+      setBusy(''); setQueued(null)
     }
   }
 
@@ -628,7 +688,8 @@ export default function FlociControl({ projectId, runners, you }: {
       {/* The stages, whenever the runner has any to report. It supersedes the prose
           below while it is running: a bar naming the stage it is on answers "why is
           this taking so long" better than a sentence explaining that it might. */}
-      {!!job && <JobProgress job={job} clouds={emulators.clouds} />}
+      {!!job && <JobProgress job={job} clouds={emulators.clouds}
+                             queued={!realJob && !!queuedJob} />}
 
       {/* Says WHY it is not instant, rather than leaving a long spinner unexplained.
           Kept for the gap before the runner picks the command up, and for agents too
